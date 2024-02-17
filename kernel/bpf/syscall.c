@@ -3717,6 +3717,8 @@ attach_type_to_prog_type(enum bpf_attach_type attach_type)
 	case BPF_TCX_INGRESS:
 	case BPF_TCX_EGRESS:
 		return BPF_PROG_TYPE_SCHED_CLS;
+	case BPF_CGROUP_CACHESTREAM:
+		return BPF_PROG_TYPE_CGROUP_CACHESTREAM;
 	default:
 		return BPF_PROG_TYPE_UNSPEC;
 	}

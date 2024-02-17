@@ -2506,6 +2506,80 @@ const struct bpf_verifier_ops cg_sockopt_verifier_ops = {
 const struct bpf_prog_ops cg_sockopt_prog_ops = {
 };
 
+/* Cachestream */
+int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb,
+					struct iov_iter *iter)
+{
+	struct cgroup *cgrp;
+	const enum cgroup_bpf_attach_type atype = CGROUP_CACHESTREAM;
+	struct bpf_cachestream ctx = {
+		.ino = iocb->ki_filp->f_inode->i_ino,
+		.offset = iocb->ki_pos,
+		.size = iter->count
+	};
+	int ret;
+
+	rcu_read_lock();
+
+	// TODO: what does dfl_cgroup mean? will the world ever know, find out
+	// next time.
+	cgrp = task_dfl_cgroup(current);
+	ret = bpf_prog_run_array_cg(&cgrp->bpf, atype, &ctx, bpf_prog_run, 0,
+				    NULL);
+	rcu_read_unlock();
+
+	return ret;
+}
+
+static const struct bpf_func_proto *
+cg_cachestream_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
+{
+	const struct bpf_func_proto *func_proto;
+
+	func_proto = cgroup_common_func_proto(func_id, prog);
+	if (func_proto)
+		return func_proto;
+
+	func_proto = cgroup_current_func_proto(func_id, prog);
+	if (func_proto)
+		return func_proto;
+
+	switch (func_id) {
+	default:
+		return bpf_base_func_proto(func_id);
+	}
+}
+
+static bool cg_cachestream_is_valid_access(int off, int size,
+					   enum bpf_access_type type,
+					   const struct bpf_prog *prog,
+					   struct bpf_insn_access_aux *info)
+{
+	const int size_default = sizeof(__u64);
+	if (off < 0 || off >= sizeof(struct bpf_cachestream))
+		return false;
+
+	if (off % size != 0)
+		return false;
+
+	switch (off) {
+	default:
+		if (size != size_default)
+			return false;
+		break;
+	}
+
+	return true;
+}
+
+const struct bpf_verifier_ops cg_cachestream_verifier_ops = {
+	.get_func_proto         = cg_cachestream_func_proto,
+	.is_valid_access        = cg_cachestream_is_valid_access
+};
+
+const struct bpf_prog_ops cg_cachestream_prog_ops = {
+};
+
 /* Common helpers for cgroup hooks. */
 const struct bpf_func_proto *
 cgroup_common_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)

@@ -22,6 +22,8 @@ struct bpf_cgroup_storage;
 struct ctl_table;
 struct ctl_table_header;
 struct task_struct;
+struct kiocb;
+struct iov_iter;
 
 unsigned int __cgroup_bpf_run_lsm_sock(const void *ctx,
 				       const struct bpf_insn *insn);
@@ -147,6 +149,9 @@ int __cgroup_bpf_run_filter_getsockopt(struct sock *sk, int level,
 int __cgroup_bpf_run_filter_getsockopt_kern(struct sock *sk, int level,
 					    int optname, void *optval,
 					    int *optlen, int retval);
+
+int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb,
+					struct iov_iter *iter);
 
 static inline enum bpf_cgroup_storage_type cgroup_storage_type(
 	struct bpf_map *map)
@@ -404,6 +409,14 @@ static inline bool cgroup_bpf_sock_enabled(struct sock *sk,
 	if (cgroup_bpf_enabled(CGROUP_GETSOCKOPT))			       \
 		__ret = __cgroup_bpf_run_filter_getsockopt_kern(	       \
 			sock, level, optname, optval, optlen, retval);	       \
+	__ret;								       \
+})
+
+#define BPF_CGROUP_RUN_PROG_CACHESTREAM(iocb, iter)			       \
+({									       \
+	int __ret = 0;                                           	       \
+	if (cgroup_bpf_enabled(CGROUP_CACHESTREAM))			       \
+		__ret = __cgroup_bpf_run_filter_cachestream(iocb, iter);       \
 	__ret;								       \
 })
 

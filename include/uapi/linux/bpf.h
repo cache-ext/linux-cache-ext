@@ -988,6 +988,7 @@ enum bpf_prog_type {
 	BPF_PROG_TYPE_SK_LOOKUP,
 	BPF_PROG_TYPE_SYSCALL, /* a program that can execute syscalls */
 	BPF_PROG_TYPE_NETFILTER,
+	BPF_PROG_TYPE_CGROUP_CACHESTREAM,
 };
 
 enum bpf_attach_type {
@@ -1040,6 +1041,7 @@ enum bpf_attach_type {
 	BPF_TCX_INGRESS,
 	BPF_TCX_EGRESS,
 	BPF_TRACE_UPROBE_MULTI,
+	BPF_CGROUP_CACHESTREAM,
 	__MAX_BPF_ATTACH_TYPE
 };
 
@@ -7165,6 +7167,12 @@ struct bpf_sockopt {
 	__s32	optname;
 	__s32	optlen;
 	__s32	retval;
+};
+
+struct bpf_cachestream {
+	__u64 ino;
+	__u64 offset;
+	__u64 size;
 };
 
 struct bpf_pidns_info {
