@@ -2650,7 +2650,7 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		if (unlikely(iocb->ki_pos >= i_size_read(inode)))
 			break;
 
-		printk("omg we got here: %d\n", BPF_CGROUP_RUN_PROG_CACHESTREAM(iocb, iter));
+		BPF_CGROUP_RUN_PROG_CACHESTREAM(iocb, iter);
 
 		error = filemap_get_pages(iocb, iter->count, &fbatch, false);
 		if (error < 0)
