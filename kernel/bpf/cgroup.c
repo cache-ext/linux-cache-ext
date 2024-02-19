@@ -2556,7 +2556,7 @@ static bool cg_cachestream_is_valid_access(int off, int size,
 					   struct bpf_insn_access_aux *info)
 {
 	const int size_default = sizeof(__u64);
-	if (off < 0 || off >= sizeof(struct bpf_cachestream))
+	if (off < 0 || off + size > sizeof(struct bpf_cachestream))
 		return false;
 
 	if (off % size != 0)
