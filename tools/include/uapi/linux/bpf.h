@@ -7169,6 +7169,12 @@ struct bpf_sockopt {
 	__s32	retval;
 };
 
+struct bpf_cachestream {
+	__u64 ino;
+	__u64 offset;
+	__u64 size;
+};
+
 struct bpf_pidns_info {
 	__u32 pid;
 	__u32 tgid;
