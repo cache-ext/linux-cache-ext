@@ -3911,6 +3911,7 @@ static int bpf_prog_detach(const union bpf_attr *attr)
 	case BPF_PROG_TYPE_CGROUP_SYSCTL:
 	case BPF_PROG_TYPE_SOCK_OPS:
 	case BPF_PROG_TYPE_LSM:
+	case BPF_PROG_TYPE_CGROUP_CACHESTREAM:
 		ret = cgroup_bpf_prog_detach(attr, ptype);
 		break;
 	case BPF_PROG_TYPE_SCHED_CLS:

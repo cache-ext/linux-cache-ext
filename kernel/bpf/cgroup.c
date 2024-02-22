@@ -2507,15 +2507,14 @@ const struct bpf_prog_ops cg_sockopt_prog_ops = {
 };
 
 /* Cachestream */
-int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb,
-					struct iov_iter *iter)
+int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb, size_t count)
 {
 	struct cgroup *cgrp;
 	const enum cgroup_bpf_attach_type atype = CGROUP_CACHESTREAM;
 	struct bpf_cachestream ctx = {
 		.ino = iocb->ki_filp->f_inode->i_ino,
 		.offset = iocb->ki_pos,
-		.size = iter->count
+		.size = count
 	};
 	int ret;
 

@@ -151,8 +151,7 @@ int __cgroup_bpf_run_filter_getsockopt_kern(struct sock *sk, int level,
 					    int optname, void *optval,
 					    int *optlen, int retval);
 
-int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb,
-					struct iov_iter *iter);
+int __cgroup_bpf_run_filter_cachestream(struct kiocb *iocb, size_t count);
 
 static inline enum bpf_cgroup_storage_type cgroup_storage_type(
 	struct bpf_map *map)
@@ -413,11 +412,11 @@ static inline bool cgroup_bpf_sock_enabled(struct sock *sk,
 	__ret;								       \
 })
 
-#define BPF_CGROUP_RUN_PROG_CACHESTREAM(iocb, iter)			       \
+#define BPF_CGROUP_RUN_PROG_CACHESTREAM(iocb, count)			       \
 ({									       \
 	int __ret = 0;                                           	       \
 	if (cgroup_bpf_enabled(CGROUP_CACHESTREAM))			       \
-		__ret = __cgroup_bpf_run_filter_cachestream(iocb, iter);       \
+		__ret = __cgroup_bpf_run_filter_cachestream(iocb, count);      \
 	__ret;								       \
 })
 
