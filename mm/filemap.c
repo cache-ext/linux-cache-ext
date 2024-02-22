@@ -2594,7 +2594,10 @@ static int __cachestream_dio(struct file *file, struct address_space *mapping,
 				return error;
 			return 1;
 		}
-		folio_batch_add(fbatch, folio);
+
+		// Don't overflow fbatch
+		if (!folio_batch_add(fbatch, folio))
+			break;
 	}
 	// Return 1 to signify cachestream approach
 	return 1;
