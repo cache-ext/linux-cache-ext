@@ -2414,7 +2414,6 @@ static int filemap_read_folio_cachestream(struct file *file, filler_t filler,
 	if (unlikely(workingset))
 		psi_memstall_enter(&pflags);
 	error = filler(file, folio);
-	ebpf_dump_page(folio_address(folio),4096);
 	if (unlikely(workingset))
 		psi_memstall_leave(&pflags);
 	if (error)
