@@ -2886,18 +2886,26 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 static bool inactive_is_low(struct lruvec *lruvec, enum lru_list inactive_lru)
 {
 	enum lru_list active_lru = inactive_lru + LRU_ACTIVE;
+	struct mem_cgroup *memcg;
 	unsigned long inactive, active;
 	unsigned long inactive_ratio;
 	unsigned long gb;
 
+	// Get cgroup from lruvec
+	memcg = lruvec_memcg(lruvec);
+	// Get the desired active to inactive ratio
+	inactive_ratio = mem_cgroup_get_active_to_inactive_ratio(memcg);
 	inactive = lruvec_page_state(lruvec, NR_LRU_BASE + inactive_lru);
 	active = lruvec_page_state(lruvec, NR_LRU_BASE + active_lru);
 
-	gb = (inactive + active) >> (30 - PAGE_SHIFT);
-	if (gb)
-		inactive_ratio = int_sqrt(10 * gb);
-	else
-		inactive_ratio = 1;
+	if (inactive_ratio == 0) {
+		// Ratio not set by cgroup
+		gb = (inactive + active) >> (30 - PAGE_SHIFT);
+		if (gb)
+			inactive_ratio = int_sqrt(10 * gb);
+		else
+			inactive_ratio = 1;
+	}
 
 	return inactive * inactive_ratio < active;
 }

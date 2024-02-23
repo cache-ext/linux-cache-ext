@@ -249,6 +249,9 @@ struct mem_cgroup {
 	/* OOM-Killer disable */
 	int		oom_kill_disable;
 
+	/* Active-to-inactive ratio */
+	unsigned long target_active_to_inactive_ratio;
+
 	/* memory.events and memory.events.local */
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
@@ -922,6 +925,8 @@ unsigned long mem_cgroup_get_zone_lru_size(struct lruvec *lruvec,
 
 void mem_cgroup_handle_over_high(gfp_t gfp_mask);
 
+unsigned long mem_cgroup_get_active_to_inactive_ratio(struct mem_cgroup *memcg);
+
 unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg);
 
 unsigned long mem_cgroup_size(struct mem_cgroup *memcg);
@@ -1414,6 +1419,11 @@ static inline bool mem_cgroup_online(struct mem_cgroup *memcg)
 static inline
 unsigned long mem_cgroup_get_zone_lru_size(struct lruvec *lruvec,
 		enum lru_list lru, int zone_idx)
+{
+	return 0;
+}
+
+static inline unsigned long mem_cgroup_get_active_to_inactive_ratio(struct mem_cgroup *memcg)
 {
 	return 0;
 }

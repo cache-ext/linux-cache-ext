@@ -6474,6 +6474,38 @@ static ssize_t memory_low_write(struct kernfs_open_file *of,
 	return nbytes;
 }
 
+unsigned long mem_cgroup_get_active_to_inactive_ratio(struct mem_cgroup *memcg)
+{
+	return READ_ONCE(memcg->target_active_to_inactive_ratio);
+}
+
+static int target_active_to_inactive_ratio_show(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+	unsigned long target_active_to_inactive_ratio = READ_ONCE(memcg->target_active_to_inactive_ratio);
+	seq_printf(m, "%lu\n", target_active_to_inactive_ratio);
+	return 0;
+}
+
+static ssize_t target_active_to_inactive_ratio_write(struct kernfs_open_file *of,
+						char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	unsigned long target_active_to_inactive_ratio;
+	ssize_t ret;
+
+	ret = kstrtoul(strstrip(buf), 0, &target_active_to_inactive_ratio);
+	if (ret)
+		return ret;
+
+	if (target_active_to_inactive_ratio > 1000000)
+		return -EINVAL;
+
+	WRITE_ONCE(memcg->target_active_to_inactive_ratio, target_active_to_inactive_ratio);
+
+	return nbytes;
+}
+
 static int memory_high_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
@@ -6757,6 +6789,11 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = memory_high_show,
 		.write = memory_high_write,
+	},
+	{
+		.name = "target_active_to_inactive_ratio",
+		.seq_show = target_active_to_inactive_ratio_show,
+		.write = target_active_to_inactive_ratio_write,
 	},
 	{
 		.name = "max",
