@@ -25,6 +25,7 @@
  * Copyright (C) 2020 Alibaba, Inc, Alex Shi
  */
 
+#include <linux/types.h>
 #include <linux/page_counter.h>
 #include <linux/memcontrol.h>
 #include <linux/cgroup.h>
@@ -250,6 +251,149 @@ struct mem_cgroup *vmpressure_to_memcg(struct vmpressure *vmpr)
 }
 
 #ifdef CONFIG_MEMCG_KMEM
+
+/*
+ * Valid folios set code.
+ */
+
+
+static inline uintptr_t folio_ptr_to_key (struct folio *folio) {
+	return (uintptr_t)folio;
+}
+
+static inline struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio) {
+	// Get cgroup from folio
+	struct mem_cgroup *memcg = folio_memcg(folio);
+	// Get pgdat from folio
+	pg_data_t *pgdat = folio_pgdat(folio);
+	// Get node cgroup
+	struct mem_cgroup_per_node *node_cgroup = memcg->nodeinfo[pgdat->node_id];
+	// Get valid folios set from cgroup
+	struct valid_folios_set *valid_folios_set = node_cgroup->valid_folios_set;
+	return valid_folios_set;
+}
+
+static inline spinlock_t *get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio) {
+	uintptr_t key = folio_ptr_to_key(folio);
+	int bkt = hash_bucket_idx(valid_folios_set->valid_folios, key);
+	if (bkt < 0 || bkt >= 1024) {
+		pr_err("invalid bkt: %d", bkt);
+		BUG();
+	}
+	return &valid_folios_set->bucket_locks[bkt];
+}
+
+struct valid_folios_set* init_valid_folios_set(int node) {
+	pr_info("Build id: 1");
+	struct valid_folios_set *valid_folios_set;
+	valid_folios_set = kzalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
+	hash_init(valid_folios_set->valid_folios);
+	for (int i = 0; i < 1024; i++) {
+		spin_lock_init(&valid_folios_set->bucket_locks[i]);
+	}
+	return valid_folios_set;
+}
+
+void free_valid_folios_set(struct valid_folios_set *valid_folios_set) {
+	struct valid_folio *cur;
+	struct hlist_node *tmp;
+	int bkt;
+	pr_info("Freeing valid folios set");
+	// TODO: Do we need to lock here?
+	hash_for_each_safe(valid_folios_set->valid_folios, bkt, tmp, cur, h_node) {
+		hash_del(&cur->h_node);
+		kfree(cur);
+	}
+	kfree(valid_folios_set);
+}
+
+void valid_folios_add(struct folio *folio) {
+	if (in_interrupt()) {
+		pr_err("valid_folios_add called in irq mode!\n");
+	}
+	struct valid_folio *new = kmalloc(sizeof(struct valid_folio), GFP_KERNEL);
+	new->folio_ptr = folio_ptr_to_key(folio);
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	// Lock the bucket
+	spinlock_t *bucket_lock = get_bucket_lock(valid_folios_set, folio);
+	spin_lock(bucket_lock);
+	// Use valid_folios_exists function to check if the folio is already in the valid folio hash table
+	if (valid_folios_exists(valid_folios_set, folio)) {
+		spin_unlock(bucket_lock);
+		kfree(new);
+		return;
+	}
+	// The folio is valid, so we add it to the valid folio hash table
+	hash_add(valid_folios_set->valid_folios, &new->h_node, new->folio_ptr);
+	spin_unlock(bucket_lock);
+	atomic64_fetch_add(1, &valid_folios_set->nr_entries);
+}
+
+/*
+ * Delete a folio from the valid folio hash table. If the folio is not in the
+ * hash table, do nothing.
+ */
+void valid_folios_del(struct folio *folio) {
+	if (in_interrupt()) {
+		pr_err("valid_folios_del called in irq mode!\n");
+	}
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	struct valid_folio *cur;
+	spinlock_t *bucket_lock = get_bucket_lock(valid_folios_set, folio);
+	spin_lock(bucket_lock);
+	uintptr_t key = folio_ptr_to_key(folio);
+	hash_for_each_possible(valid_folios_set->valid_folios, cur, h_node, key) {
+		if (cur->folio_ptr == key) {
+			hash_del(&cur->h_node);
+			kfree(cur);
+			spin_unlock(bucket_lock);
+			atomic64_fetch_add(-1, &valid_folios_set->nr_entries);
+			return;
+		}
+	}
+	spin_unlock(bucket_lock);
+}
+
+bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio) {
+	// TODO: Add RCU.
+	// Use hash_for_each_possible to iterate over the valid folio hash table
+	// and check if the folio is valid
+	struct valid_folio *cur;
+	uintptr_t key = folio_ptr_to_key(folio);
+	hash_for_each_possible(valid_folios_set->valid_folios, cur, h_node, key) {
+		if (cur->folio_ptr == key) {
+			return true;
+		}
+	}
+	return false;
+}
+
+u64 valid_folios_get_nr_entries(struct valid_folios_set *valid_folios_set) {
+	return (u64) (atomic64_read(&valid_folios_set->nr_entries));
+}
+
+static u64 mem_cgroup_page_tracking_nr_entries_read(
+	struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+	// Iterate per-node cgroups and add
+	u64 total_entries = 0;
+	struct mem_cgroup_per_node *pn;
+	int nid;
+
+	for_each_node(nid) {
+		pn = memcg->nodeinfo[nid];
+		total_entries += valid_folios_get_nr_entries(pn->valid_folios_set);
+	}
+	return total_entries;
+	return mem_cgroup_swappiness(memcg);
+}
+
+
+/*
+ ******************************************************************************
+ */
+
 static DEFINE_SPINLOCK(objcg_lock);
 
 bool mem_cgroup_kmem_disabled(void)
@@ -5138,6 +5282,11 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = mem_cgroup_reset,
 		.read_u64 = mem_cgroup_read_u64,
 	},
+	// New stats for the page tracking hashtable
+	{
+		.name = "page_tracking.nr_entries",
+		.read_u64 = mem_cgroup_page_tracking_nr_entries_read,
+	},
 	{ },	/* terminate */
 };
 
@@ -5249,6 +5398,7 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 
 	lruvec_init(&pn->lruvec);
 	pn->memcg = memcg;
+	pn->valid_folios_set = init_valid_folios_set(node);
 
 	memcg->nodeinfo[node] = pn;
 	return 0;
@@ -5262,6 +5412,7 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 		return;
 
 	free_percpu(pn->lruvec_stats_percpu);
+	free_valid_folios_set(pn->valid_folios_set);
 	kfree(pn);
 }
 
@@ -6796,6 +6947,10 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+	},
+	{
+		.name = "page_tracking.nr_entries",
+		.read_u64 = mem_cgroup_page_tracking_nr_entries_read,
 	},
 	{ }	/* terminate */
 };

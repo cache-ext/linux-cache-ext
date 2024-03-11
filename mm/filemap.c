@@ -220,6 +220,7 @@ void __filemap_remove_folio(struct folio *folio, void *shadow)
 {
 	struct address_space *mapping = folio->mapping;
 
+	valid_folios_del(folio);
 	trace_mm_filemap_delete_from_page_cache(folio);
 	filemap_unaccount_folio(mapping, folio);
 	page_cache_delete(mapping, folio, shadow);
@@ -330,6 +331,7 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
 
+		valid_folios_del(folio);
 		trace_mm_filemap_delete_from_page_cache(folio);
 		filemap_unaccount_folio(mapping, folio);
 	}
@@ -917,6 +919,7 @@ unlock:
 	if (xas_error(&xas))
 		goto error;
 
+	valid_folios_add(folio);
 	trace_mm_filemap_add_to_page_cache(folio);
 	return 0;
 error:

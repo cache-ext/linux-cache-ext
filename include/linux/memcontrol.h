@@ -21,6 +21,7 @@
 #include <linux/vmstat.h>
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
+#include <linux/hashtable.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -59,6 +60,34 @@ struct mem_cgroup_reclaim_cookie {
 };
 
 #ifdef CONFIG_MEMCG
+
+/*
+ * valid_folios is a set of valid folio counters in the system. It's used to
+ * validate untrusted page references.
+ *
+ * Key: Pointer interpreted as a number.
+ * Value: Nothing, we just want to check for existence.
+ */
+struct valid_folios_set {
+	DECLARE_HASHTABLE(valid_folios, 10);
+	spinlock_t bucket_locks[1024];
+	atomic64_t nr_entries;
+};
+
+struct valid_folio {
+	struct hlist_node h_node;
+	uintptr_t folio_ptr;
+};
+
+
+// Function definitions for the valid_folios_set
+struct valid_folios_set* init_valid_folios_set(int node);
+void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
+void valid_folios_add(struct folio *folio);
+void valid_folios_del(struct folio *folio);
+bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
+
+
 
 #define MEM_CGROUP_ID_SHIFT	16
 
@@ -123,6 +152,7 @@ struct lruvec_stats {
  */
 struct mem_cgroup_per_node {
 	struct lruvec		lruvec;
+	struct valid_folios_set *valid_folios_set;
 
 	struct lruvec_stats_percpu __percpu	*lruvec_stats_percpu;
 	struct lruvec_stats			lruvec_stats;

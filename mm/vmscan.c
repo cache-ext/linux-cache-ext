@@ -57,6 +57,7 @@
 #include <linux/khugepaged.h>
 #include <linux/rculist_nulls.h>
 #include <linux/random.h>
+#include <linux/hashtable.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
