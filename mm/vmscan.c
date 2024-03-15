@@ -12,6 +12,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/mm_types.h>
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
 #include <linux/module.h>
@@ -68,9 +69,11 @@
 
 #include "internal.h"
 #include "swap.h"
+#include "page_cache_ext.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
+#include <linux/bpf.h>
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -6337,6 +6340,33 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 				sc->priority == DEF_PRIORITY);
 
 	blk_start_plug(&plug);
+
+	/*
+	 * Page cache extension
+	 */
+	// Is page_cache_ext enabled for this cgroup?
+	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	if (memcg) {
+		struct cgroup *cgrp = memcg->css.cgroup;
+		if (page_cache_ext_cgroup_enabled(cgrp)) {
+			// Is a struct ops loaded?
+			struct page_cache_ext_ops *pcext_ops = READ_ONCE(page_cache_ext_ops);
+			if (pcext_ops != NULL) {
+				struct page_cache_ext_eviction_ctx *ctx = kmalloc(sizeof(struct page_cache_ext_eviction_ctx), GFP_KERNEL);
+				if (!ctx) {
+					pr_err("page_cache_ext: Failed to allocate page_cache_ext_eviction_ctx\n");
+					return;
+				}
+				ctx->request_nr_folios_to_evict = SWAP_CLUSTER_MAX;
+				pcext_ops->evict_folios(ctx);
+				// TODO: Evict returned pages
+				// TODO: Add some watchdog mechanism. If the hook is not performing adequetely, skip it.
+			}
+		}
+	}
+
+	/***********************************************************************/
+
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
 					nr[LRU_INACTIVE_FILE]) {
 		unsigned long nr_anon, nr_file, percentage;

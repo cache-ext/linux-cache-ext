@@ -1372,4 +1372,26 @@ enum {
 	/* See also internal only FOLL flags in mm/internal.h */
 };
 
+/*
+ * Page cache ext
+ */
+
+struct page_cache_ext_eviction_ctx {
+	// Input
+	u64 request_nr_folios_to_evict;
+	// Output
+	u64 nr_folios_to_evict;
+	struct folio folios_to_evict[32];
+};
+
+struct page_cache_ext_ops {
+	// TODO: How can I make some fields page_cache_ext_eviction_ctx writeable?
+	// Implement bpf_verifier_ops
+	void (*evict_folios)(struct page_cache_ext_eviction_ctx *ctx);
+	// TODO: Add name?
+};
+
+
+/****************************************************************************/
+
 #endif /* _LINUX_MM_TYPES_H */

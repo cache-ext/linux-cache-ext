@@ -65,6 +65,9 @@
 #include <linux/psi.h>
 #include <linux/seq_buf.h>
 #include <linux/sched/isolation.h>
+#include <linux/proc_fs.h>
+#include <linux/minmax.h>
+#include <linux/rwsem.h>
 #include "internal.h"
 #include <net/sock.h>
 #include <net/ip.h>
@@ -253,6 +256,110 @@ struct mem_cgroup *vmpressure_to_memcg(struct vmpressure *vmpr)
 #ifdef CONFIG_MEMCG_KMEM
 
 /*
+ * Page Cache Extension.
+ */
+struct page_cache_ext_enabled_cgroup {
+	struct cgroup *cgroup;
+	char path[PATH_MAX];
+	struct rw_semaphore rwsem;
+};
+
+
+struct page_cache_ext_enabled_cgroup page_cache_ext_enabled_cgroup;
+
+void page_cache_ext_enabled_cgroup_init(void) {
+	page_cache_ext_enabled_cgroup.cgroup = NULL;
+	page_cache_ext_enabled_cgroup.path[0] = '\0';
+	init_rwsem(&page_cache_ext_enabled_cgroup.rwsem);
+}
+
+// New procfs file to read/write the cgroup
+ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
+	char __user *user_buffer, size_t count, loff_t *offset) {
+	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	// Return current cgroup path stored in page_cache_ext_enabled_cgroup_path
+	ssize_t bytes_to_copy;
+	size_t len;
+	int ret;
+	loff_t pos = *offset;
+	// Check if offset is beyond the string length
+	len = strlen(page_cache_ext_enabled_cgroup.path);
+	if (pos >= len) {
+		up_read(&page_cache_ext_enabled_cgroup.rwsem);
+		return 0; // EOF
+	}
+	// Calculate the number of bytes to copy, ensuring we don't exceed count
+	bytes_to_copy = len - pos;
+	if (bytes_to_copy > count)
+		bytes_to_copy = count;
+	// Copy the data to user buffer
+	ret = copy_to_user(user_buffer, page_cache_ext_enabled_cgroup.path + pos, bytes_to_copy);
+	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	if (ret) {
+		return -EFAULT;
+	}
+	// Update the offset
+	*offset += bytes_to_copy;
+	return bytes_to_copy;
+}
+
+
+ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
+	const char __user *user_buffer, size_t count, loff_t *offset) {
+	// Get path from userspace buffer
+	struct cgroup *new_cgroup;
+	char new_cgroup_path[PATH_MAX];
+	char *new_cgroup_path_ptr;
+	if (count >= PATH_MAX)
+		return -ENAMETOOLONG;
+
+	if (copy_from_user(new_cgroup_path, user_buffer, count))
+		return -EFAULT;
+
+	// Null terminate the path
+	new_cgroup_path[count] = '\0';
+
+	// Remove leading and trailing whitespace
+	new_cgroup_path_ptr = strim(new_cgroup_path);
+
+	// Get the cgroup pointer for this path
+	new_cgroup = cgroup_get_from_path(new_cgroup_path_ptr);
+	if (IS_ERR(new_cgroup)) {
+		pr_err("page_cache_ext: Invalid cgroup path: %s\n", new_cgroup_path_ptr);
+		return PTR_ERR(new_cgroup);
+	}
+
+	// Change the cgroup pointer
+	down_write(&page_cache_ext_enabled_cgroup.rwsem);
+	page_cache_ext_enabled_cgroup.cgroup = new_cgroup;
+	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, PATH_MAX);
+	up_write(&page_cache_ext_enabled_cgroup.rwsem);
+
+	return count;
+}
+
+bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup) {
+	bool res;
+	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	res = (cgroup == page_cache_ext_enabled_cgroup.cgroup);
+	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	return res;
+}
+
+
+static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
+    .proc_read = procfile_page_cache_ext_enabled_cgroup_read,
+    .proc_write = procfile_page_cache_ext_enabled_cgroup_write,
+};
+
+
+
+ /*
+ ******************************************************************************
+ */
+
+
+/*
  * Valid folios set code.
  */
 
@@ -284,7 +391,6 @@ static inline spinlock_t *get_bucket_lock(struct valid_folios_set *valid_folios_
 }
 
 struct valid_folios_set* init_valid_folios_set(int node) {
-	pr_info("Build id: 1");
 	struct valid_folios_set *valid_folios_set;
 	valid_folios_set = kzalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
 	hash_init(valid_folios_set->valid_folios);
@@ -7532,6 +7638,21 @@ __setup("cgroup.memory=", cgroup_memory);
  */
 static int __init mem_cgroup_init(void)
 {
+
+	/*
+	 * Page cache extension
+	 */
+	struct proc_dir_entry *entry;
+	entry = proc_create("page_cache_ext_enabled_cgroup", 0666, NULL,
+						&proc_file_page_cache_ext_enabled_cgroup_fops);
+    if (!entry) {
+        return -ENOMEM; // Out of memory
+    }
+
+	page_cache_ext_enabled_cgroup_init();
+
+	/*************************************************************************/
+
 	int cpu, node;
 
 	/*
