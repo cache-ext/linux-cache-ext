@@ -93,7 +93,7 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
 void valid_folios_add(struct folio *folio);
 void valid_folios_del(struct folio *folio);
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
-
+inline struct valid_folios_set * lruvec_to_valid_folios_set(struct lruvec *lruvec);
 
 
 #define MEM_CGROUP_ID_SHIFT	16

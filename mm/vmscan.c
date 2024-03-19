@@ -6304,6 +6304,102 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 #endif /* CONFIG_LRU_GEN */
 
+/******************************************************************************
+ * page_cache_ext *************************************************************
+ *****************************************************************************/
+
+static bool page_cache_ext_isolate_folio(struct folio *folio) {
+	struct lruvec *lruvec;
+
+	if (folio_test_unevictable(folio)) {
+		return false;
+	}
+
+	/* raced with release_pages() */
+	if (!folio_try_get(folio))
+		return false;
+
+	/* raced with another isolation */
+	if (!folio_test_clear_lru(folio)) {
+		folio_put(folio);
+		return false;
+	}
+
+	lruvec = folio_lruvec_lock_irq(folio);
+	/* remove from list */
+	list_del(&folio->lru);
+	// TODO: Update lru size
+	unlock_page_lruvec_irq(lruvec);
+	return true;
+}
+
+static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
+	unsigned long nr_to_evict, struct page_cache_ext_ops *pcext_ops) {
+
+	LIST_HEAD(free_folios);
+	unsigned long nr_reclaimed = 0, nr_reclaimed_for_batch = 0;
+	struct page_cache_ext_eviction_ctx *ctx = kzalloc(sizeof(struct page_cache_ext_eviction_ctx), GFP_KERNEL);
+	if (!ctx) {
+		pr_err("page_cache_ext: Failed to allocate page_cache_ext_eviction_ctx\n");
+		return 0;
+	}
+	pr_info("page_cache_ext: Trying to evict %lu pages\n", nr_to_evict);
+	ctx->request_nr_folios_to_evict = nr_to_evict;
+	pcext_ops->evict_folios(ctx);
+	if (ctx->nr_folios_to_evict > ARRAY_SIZE(ctx->folios_to_evict)) {
+		pr_err("page_cache_ext: nr_folios_evicted bigger than array size!\n");
+		return 0;
+	}
+	if (ctx->nr_folios_to_evict == 0) {
+		pr_err("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
+	}
+	if (ctx->nr_folios_to_evict != nr_to_evict) {
+		pr_warn("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
+			ctx->nr_folios_to_evict, nr_to_evict);
+	}
+	for (int i = 0; i < ctx->nr_folios_to_evict; i++) {
+		struct folio *untrusted_folio_ptr = ctx->folios_to_evict[i];
+		if (!valid_folios_exists(lruvec_to_valid_folios_set(lruvec), untrusted_folio_ptr)) {
+			pr_err("page_cache_ext: Folio not in valid_folios_set: %p!\n", untrusted_folio_ptr);
+			continue;
+		}
+		// Isolate page
+		if (!page_cache_ext_isolate_folio(untrusted_folio_ptr)) {
+			pr_err("page_cache_ext: Failed to isolate folio: %p\n", untrusted_folio_ptr);
+			continue;
+		}
+		// Free isolated folios
+		list_add(&untrusted_folio_ptr->lru, &free_folios);
+		// TODO: Repurposing this damon function for now. Is it enough?
+		nr_reclaimed_for_batch = reclaim_pages(&free_folios);
+		if (nr_reclaimed_for_batch != ctx->nr_folios_to_evict) {
+			pr_err("page_cache_ext: nr_reclaimed(%lu) != nr_to_evict(%lu)!\n", nr_reclaimed_for_batch, ctx->nr_folios_to_evict);
+		}
+		nr_reclaimed += nr_reclaimed_for_batch;
+	}
+	// TODO: Add some watchdog mechanism. If the hook is not performing adequetely, skip it.
+	return nr_reclaimed;
+}
+
+static unsigned long page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec, unsigned long nr_to_evict) {
+	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	if (memcg) {
+		struct cgroup *cgrp = memcg->css.cgroup;
+		if (page_cache_ext_cgroup_enabled(cgrp)) {
+			// Is a struct ops loaded?
+			struct page_cache_ext_ops *pcext_ops = READ_ONCE(page_cache_ext_ops);
+			if (pcext_ops != NULL) {
+				return __page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict, pcext_ops);
+			}
+		}
+	}
+	return 0;
+}
+
+
+/*****************************************************************************/
+
+
 static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	unsigned long nr[NR_LRU_LISTS];
@@ -6344,27 +6440,8 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	/*
 	 * Page cache extension
 	 */
-	// Is page_cache_ext enabled for this cgroup?
-	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
-	if (memcg) {
-		struct cgroup *cgrp = memcg->css.cgroup;
-		if (page_cache_ext_cgroup_enabled(cgrp)) {
-			// Is a struct ops loaded?
-			struct page_cache_ext_ops *pcext_ops = READ_ONCE(page_cache_ext_ops);
-			if (pcext_ops != NULL) {
-				struct page_cache_ext_eviction_ctx *ctx = kmalloc(sizeof(struct page_cache_ext_eviction_ctx), GFP_KERNEL);
-				if (!ctx) {
-					pr_err("page_cache_ext: Failed to allocate page_cache_ext_eviction_ctx\n");
-					return;
-				}
-				ctx->request_nr_folios_to_evict = SWAP_CLUSTER_MAX;
-				pcext_ops->evict_folios(ctx);
-				// TODO: Evict returned pages
-				// TODO: Add some watchdog mechanism. If the hook is not performing adequetely, skip it.
-			}
-		}
-	}
-
+	unsigned long nr_to_evict = min(nr[LRU_INACTIVE_FILE], SWAP_CLUSTER_MAX);
+	nr_reclaimed += page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict);
 	/***********************************************************************/
 
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||

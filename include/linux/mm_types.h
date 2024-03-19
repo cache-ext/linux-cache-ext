@@ -1378,10 +1378,10 @@ enum {
 
 struct page_cache_ext_eviction_ctx {
 	// Input
-	u64 request_nr_folios_to_evict;
+	unsigned long request_nr_folios_to_evict;
 	// Output
-	u64 nr_folios_to_evict;
-	struct folio folios_to_evict[32];
+	unsigned long nr_folios_to_evict;
+	struct folio *folios_to_evict[32];
 };
 
 struct page_cache_ext_ops {

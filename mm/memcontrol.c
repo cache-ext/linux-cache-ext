@@ -380,6 +380,18 @@ static inline struct valid_folios_set *folio_to_valid_folios_set(struct folio *f
 	return valid_folios_set;
 }
 
+inline struct valid_folios_set *lruvec_to_valid_folios_set(struct lruvec *lruvec) {
+	// Get cgroup from lruvec
+	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	// Get pgdat from lruvec
+	pg_data_t *pgdat = lruvec_pgdat(lruvec);
+	// Get node cgroup
+	struct mem_cgroup_per_node *node_cgroup = memcg->nodeinfo[pgdat->node_id];
+	// Get valid folios set from cgroup
+	struct valid_folios_set *valid_folios_set = node_cgroup->valid_folios_set;
+	return valid_folios_set;
+}
+
 static inline spinlock_t *get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio) {
 	uintptr_t key = folio_ptr_to_key(folio);
 	int bkt = hash_bucket_idx(valid_folios_set->valid_folios, key);

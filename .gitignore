@@ -170,3 +170,9 @@ sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
+
+# Compile commands
+compile_commands.json
+
+# Binaries
+*.out
