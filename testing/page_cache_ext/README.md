@@ -33,10 +33,31 @@ The current architecture is the following:
 
 ### Setup
 
-1. Create a new memory cgroup for the demo.
+1. Create a new memory cgroup with 1GB limit for the demo.
+
+    ```sh
+    sudo cgcreate -g memory:mygroup
+    sudo sh -c 'echo 1073741824 > /sys/fs/cgroup/mygroup/memory.max'
+    ```
+
 1. Enable `page_cache_ext` for the new cgroup.
+
+    ```sh
+    echo -n "/mygroup" > /proc/page_cache_ext_enabled_cgroup
+    ```
+
 1. Load the extension framework BPF hooks in the kernel.
-1. Run application.
+
+    ```sh
+    make
+    sudo ./page_cache_ext_simple.out
+    ```
+
+1. Run application with 1.2GB working set.
+
+    ```sh
+    cgexec -g memory:mygroup ./test_app.py
+    ```
 
 ### Teardown
 
