@@ -121,6 +121,7 @@ static const char * const attach_type_name[] = {
 	[BPF_TCX_INGRESS]		= "tcx_ingress",
 	[BPF_TCX_EGRESS]		= "tcx_egress",
 	[BPF_TRACE_UPROBE_MULTI]	= "trace_uprobe_multi",
+	[BPF_CACHE_EXT_OPS]		= "cache_ext_ops",
 };
 
 static const char * const link_type_name[] = {
@@ -137,6 +138,7 @@ static const char * const link_type_name[] = {
 	[BPF_LINK_TYPE_NETFILTER]		= "netfilter",
 	[BPF_LINK_TYPE_TCX]			= "tcx",
 	[BPF_LINK_TYPE_UPROBE_MULTI]		= "uprobe_multi",
+	[BPF_LINK_TYPE_CACHE_EXT_OPS]		= "cache_ext_ops",
 };
 
 static const char * const map_type_name[] = {
@@ -12190,6 +12192,66 @@ struct bpf_link *bpf_map__attach_struct_ops(const struct bpf_map *map)
 	}
 
 	fd = bpf_link_create(map->fd, 0, BPF_STRUCT_OPS, NULL);
+	if (fd < 0) {
+		free(link);
+		return libbpf_err_ptr(fd);
+	}
+
+	link->link.fd = fd;
+	link->map_fd = map->fd;
+
+	return &link->link;
+}
+
+static int bpf_link__detach_cache_ext_ops(struct bpf_link *link)
+{
+	struct bpf_link_struct_ops *st_link;
+	__u32 zero = 0;
+
+	st_link = container_of(link, struct bpf_link_struct_ops, link);
+
+	if (st_link->map_fd < 0)
+		/* w/o a real link */
+		return bpf_map_delete_elem(link->fd, &zero);
+
+	return close(link->fd);
+}
+
+struct bpf_link *bpf_map__attach_cache_ext_ops(const struct bpf_map *map, int cgroup_fd)
+{
+	struct bpf_link_struct_ops *link;
+	__u32 zero = 0;
+	int err, fd;
+
+	if (!bpf_map__is_struct_ops(map) || map->fd == -1)
+		return libbpf_err_ptr(-EINVAL);
+
+	link = calloc(1, sizeof(*link));
+	if (!link)
+		return libbpf_err_ptr(-EINVAL);
+
+	/* kern_vdata should be prepared during the loading phase. */
+	err = bpf_map_update_elem(map->fd, &zero, map->st_ops->kern_vdata, 0);
+	/* It can be EBUSY if the map has been used to create or
+	 * update a link before.  We don't allow updating the value of
+	 * a struct_ops once it is set.  That ensures that the value
+	 * never changed.  So, it is safe to skip EBUSY.
+	 */
+	if (err && (!(map->def.map_flags & BPF_F_LINK) || err != -EBUSY)) {
+		free(link);
+		return libbpf_err_ptr(err);
+	}
+
+	link->link.detach = bpf_link__detach_struct_ops;
+
+	if (!(map->def.map_flags & BPF_F_LINK)) {
+		/* w/o a real link */
+		link->link.fd = map->fd;
+		link->map_fd = -1;
+		return &link->link;
+	}
+
+	fd = bpf_link_create(map->fd, cgroup_fd, BPF_CACHE_EXT_OPS, NULL);
 	if (fd < 0) {
 		free(link);
 		return libbpf_err_ptr(fd);

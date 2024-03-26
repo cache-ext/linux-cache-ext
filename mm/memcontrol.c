@@ -339,13 +339,11 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 }
 
 bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup) {
-	bool res;
-	down_read(&page_cache_ext_enabled_cgroup.rwsem);
-	res = (cgroup == page_cache_ext_enabled_cgroup.cgroup);
-	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	down_read(&cgroup->bpf.cache_ext_sem);
+	bool res = cgroup->bpf.cache_ext_enabled;
+	up_read(&cgroup->bpf.cache_ext_sem);
 	return res;
 }
-
 
 static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
     .proc_read = procfile_page_cache_ext_enabled_cgroup_read,

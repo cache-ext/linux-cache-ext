@@ -6386,8 +6386,10 @@ static unsigned long page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec, u
 	if (memcg) {
 		struct cgroup *cgrp = memcg->css.cgroup;
 		if (page_cache_ext_cgroup_enabled(cgrp)) {
+			// TODO: change where this is called so we minimize locking
+			// Locking is incorrect/incomplete atm
 			// Is a struct ops loaded?
-			struct page_cache_ext_ops *pcext_ops = READ_ONCE(page_cache_ext_ops);
+			struct page_cache_ext_ops *pcext_ops = cgrp->bpf.cache_ext_ops;
 			if (pcext_ops != NULL) {
 				return __page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict, pcext_ops);
 			}

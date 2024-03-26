@@ -67,7 +67,6 @@ struct mem_cgroup_reclaim_cookie {
 
  bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup);
 
-
 /*
  * valid_folios is a set of valid folio counters in the system. It's used to
  * validate untrusted page references.

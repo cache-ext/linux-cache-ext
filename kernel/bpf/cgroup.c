@@ -496,6 +496,10 @@ cleanup:
 	for (p = cgroup_parent(cgrp); p; p = cgroup_parent(p))
 		cgroup_bpf_put(p);
 
+	init_rwsem(&cgrp->bpf.cache_ext_sem);
+	cgrp->bpf.cache_ext_enabled = false;
+	cgrp->bpf.cache_ext_ops = NULL;
+
 	percpu_ref_exit(&cgrp->bpf.refcnt);
 
 	return -ENOMEM;

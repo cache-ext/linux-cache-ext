@@ -908,3 +908,76 @@ err_out:
 	return err;
 }
 
+/* Cache-ext Implementation */
+
+// TODO: Implement cache-ext ops (currently boilerplate)
+static const struct bpf_link_ops bpf_cache_ext_ops_map_lops = {
+	.dealloc = bpf_struct_ops_map_link_dealloc,
+	.show_fdinfo = bpf_struct_ops_map_link_show_fdinfo,
+	.fill_link_info = bpf_struct_ops_map_link_fill_link_info,
+	.update_map = bpf_struct_ops_map_link_update,
+};
+
+struct bpf_cache_ext_ops_link {
+	struct bpf_link link;
+	struct bpf_map __rcu *map;
+	struct cgroup *cgroup;
+};
+
+int bpf_cache_ext_ops_link_create(union bpf_attr *attr)
+{
+	struct bpf_cache_ext_ops_link *link = NULL;
+	struct bpf_link_primer link_primer;
+	struct bpf_struct_ops_map *st_map;
+	struct bpf_map *map;
+	struct cgroup *cgrp;
+	int err;
+
+	map = bpf_map_get(attr->link_create.map_fd);
+	if (IS_ERR(map))
+		return PTR_ERR(map);
+
+	cgrp = cgroup_get_from_fd(attr->link_create.target_fd);
+	if (IS_ERR(map)) {
+		bpf_map_put(map);
+		return PTR_ERR(cgrp);
+	}
+
+	st_map = (struct bpf_struct_ops_map *)map;
+
+	if (!bpf_struct_ops_valid_to_reg(map)) {
+		err = -EINVAL;
+		goto err_out;
+	}
+
+	link = kzalloc(sizeof(*link), GFP_USER);
+	if (!link) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+	bpf_link_init(&link->link, BPF_LINK_TYPE_STRUCT_OPS, &bpf_cache_ext_ops_map_lops, NULL);
+	link->cgroup = cgrp;
+
+	err = bpf_link_prime(&link->link, &link_primer);
+	if (err)
+		goto err_out;
+
+	err = st_map->st_ops->reg(st_map->kvalue.data);
+	if (err) {
+		bpf_link_cleanup(&link_primer);
+		link = NULL;
+		goto err_out;
+	}
+	RCU_INIT_POINTER(link->map, map);
+
+	// Grab cgroup cache RW semaphore and update cgroup
+	// TODO
+
+	return bpf_link_settle(&link_primer);
+
+err_out:
+	bpf_map_put(map);
+	cgroup_put(cgrp);
+	kfree(link);
+	return err;
+}
