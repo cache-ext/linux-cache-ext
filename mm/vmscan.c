@@ -6343,7 +6343,7 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 		pr_err("page_cache_ext: Failed to allocate page_cache_ext_eviction_ctx\n");
 		return 0;
 	}
-	pr_info("page_cache_ext: Trying to evict %lu pages\n", nr_to_evict);
+	pr_debug("page_cache_ext: Trying to evict %lu pages\n", nr_to_evict);
 	ctx->request_nr_folios_to_evict = nr_to_evict;
 	pcext_ops->evict_folios(ctx);
 	if (ctx->nr_folios_to_evict > ARRAY_SIZE(ctx->folios_to_evict)) {
@@ -6354,7 +6354,7 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 		pr_err("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
 	}
 	if (ctx->nr_folios_to_evict != nr_to_evict) {
-		pr_warn("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
+		pr_debug("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
 			ctx->nr_folios_to_evict, nr_to_evict);
 	}
 	for (int i = 0; i < ctx->nr_folios_to_evict; i++) {
@@ -6383,15 +6383,9 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 
 static unsigned long page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec, unsigned long nr_to_evict) {
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
-	if (memcg) {
-		struct cgroup *cgrp = memcg->css.cgroup;
-		if (page_cache_ext_cgroup_enabled(cgrp)) {
-			// Is a struct ops loaded?
-			struct page_cache_ext_ops *pcext_ops = READ_ONCE(page_cache_ext_ops);
-			if (pcext_ops != NULL) {
-				return __page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict, pcext_ops);
-			}
-		}
+	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	if (pcext_ops != NULL && pcext_ops->evict_folios != NULL) {
+		return __page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict, pcext_ops);
 	}
 	return 0;
 }

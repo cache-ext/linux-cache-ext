@@ -73,6 +73,7 @@
 #include <net/ip.h>
 #include "slab.h"
 #include "swap.h"
+#include "page_cache_ext.h"
 
 #include <linux/uaccess.h>
 
@@ -351,6 +352,15 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
     .proc_read = procfile_page_cache_ext_enabled_cgroup_read,
     .proc_write = procfile_page_cache_ext_enabled_cgroup_write,
 };
+
+inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
+{
+	if (memcg && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
+		return READ_ONCE(page_cache_ext_ops);
+	}
+	return NULL;
+}
+
 
 
 

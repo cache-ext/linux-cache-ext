@@ -91,6 +91,7 @@ def main():
         if args.debug:
             add_debug_config_options()
         make(env=llvm_env)
+        run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
         make(["modules_install"], env=llvm_env, sudo=True)
         make(["install"], env=llvm_env, sudo=True)
 

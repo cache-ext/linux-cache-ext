@@ -219,6 +219,11 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 void __filemap_remove_folio(struct folio *folio, void *shadow)
 {
 	struct address_space *mapping = folio->mapping;
+	/* page_cache_ext: folio_evicted hook */
+	struct mem_cgroup *memcg = folio_memcg(folio);
+	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	if (pcext_ops != NULL && pcext_ops->folio_evicted != NULL)
+		pcext_ops->folio_evicted(folio);
 
 	valid_folios_del(folio);
 	trace_mm_filemap_delete_from_page_cache(folio);
@@ -330,6 +335,11 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	xa_lock_irq(&mapping->i_pages);
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
+		/* page_cache_ext: folio_evicted hook */
+		struct mem_cgroup *memcg = folio_memcg(folio);
+		struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+		if (pcext_ops != NULL && pcext_ops->folio_evicted != NULL)
+			pcext_ops->folio_evicted(folio);
 
 		valid_folios_del(folio);
 		trace_mm_filemap_delete_from_page_cache(folio);
@@ -920,6 +930,12 @@ unlock:
 		goto error;
 
 	valid_folios_add(folio);
+	/* page_cache_ext: folio_added hook */
+	struct mem_cgroup *memcg = folio_memcg(folio);
+	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	if (pcext_ops != NULL && pcext_ops->folio_added != NULL)
+		pcext_ops->folio_added(folio);
+
 	trace_mm_filemap_add_to_page_cache(folio);
 	return 0;
 error:

@@ -15,10 +15,11 @@ static int bpf_page_cache_ext_init(struct btf *btf)
 
 	type_id = btf_find_by_name_kind(btf, "page_cache_ext_eviction_ctx",
 					BTF_KIND_STRUCT);
-	if (type_id < 0)
+	if (type_id < 0) {
+		pr_err("page_cache_ext: failed to find struct page_cache_ext_eviction_ctx\n");
 		return -EINVAL;
+	}
 	page_cache_ext_eviction_ctx_type = btf_type_by_id(btf, type_id);
-
 	return 0;
 }
 

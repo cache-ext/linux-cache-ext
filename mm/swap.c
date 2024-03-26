@@ -39,6 +39,7 @@
 #include <linux/buffer_head.h>
 
 #include "internal.h"
+#include "page_cache_ext.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagemap.h>
@@ -457,6 +458,13 @@ static void folio_inc_refs(struct folio *folio)
  */
 void folio_mark_accessed(struct folio *folio)
 {
+	/* page_cache_ext: folio_accessed hook */
+	struct mem_cgroup *memcg;
+	memcg = folio_memcg(folio);
+	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	if (pcext_ops != NULL && pcext_ops->folio_accessed != NULL)
+		pcext_ops->folio_accessed(folio);
+
 	if (lru_gen_enabled()) {
 		folio_inc_refs(folio);
 		return;

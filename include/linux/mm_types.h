@@ -1384,10 +1384,13 @@ struct page_cache_ext_eviction_ctx {
 	struct folio *folios_to_evict[32];
 };
 
+// TODO: How can I make only some fields page_cache_ext_eviction_ctx writeable?
 struct page_cache_ext_ops {
-	// TODO: How can I make some fields page_cache_ext_eviction_ctx writeable?
 	// Implement bpf_verifier_ops
 	void (*evict_folios)(struct page_cache_ext_eviction_ctx *ctx);
+	void (*folio_added)(struct folio *folio);
+	void (*folio_accessed)(struct folio *folio);
+	void (*folio_evicted)(struct folio *folio);
 	// TODO: Add name?
 };
 

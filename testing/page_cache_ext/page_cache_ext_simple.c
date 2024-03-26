@@ -2,14 +2,41 @@
 #include <unistd.h>
 #include <signal.h>
 #include <bpf/bpf.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "page_cache_ext_simple.skel.h"
+
+char *USAGE =
+	"Usage: ./page_cache_ext_simple\n"
+	"  Simple eviction test. Expects testfile in current directory.\n";
+
+__u64 get_inode_ino_from_path(char *path)
+{
+	struct stat sb;
+	if (stat(path, &sb) == -1) {
+		perror("stat");
+		return -1;
+	}
+	return sb.st_ino;
+}
 
 int main(int argc, char **argv)
 {
 	int ret;
+	__u64 inode_ino;
+	char *testfile_path = "./testfile";
 	struct page_cache_ext_simple_bpf *skel;
 	struct bpf_link *link;
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+	// Get inode_ino
+	if (argc != 1) {
+		fprintf(stderr, "%s", USAGE);
+		return 1;
+	}
+	inode_ino = get_inode_ino_from_path(testfile_path);
+	printf("Inode number of testfile: %llu\n", inode_ino);
 	// Open skel
 	skel = page_cache_ext_simple_bpf__open();
 	if (skel == NULL) {
@@ -18,6 +45,8 @@ int main(int argc, char **argv)
 			strerror(errno));
 		return 1;
 	}
+	// Change global var TEST_INODE_INO
+	skel->data->TEST_INODE_INO = inode_ino;
 	// Load programs
 	ret = page_cache_ext_simple_bpf__load(skel);
 	if (ret) {
@@ -35,12 +64,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-    // Wait for keyboard input
-    printf("Press any key to exit...\n");
-    getchar();
+	// Wait for keyboard input
+	printf("Press any key to exit...\n");
+	getchar();
 
-    // Exit
-    bpf_link__destroy(link);
-    page_cache_ext_simple_bpf__destroy(skel);
+	// Exit
+	bpf_link__destroy(link);
+	page_cache_ext_simple_bpf__destroy(skel);
 	return 0;
 }

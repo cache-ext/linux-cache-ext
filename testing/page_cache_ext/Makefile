@@ -1,7 +1,7 @@
 # Define the compiler and the flags
 CLANG ?= clang
 BPFTOOL ?= bpftool
-CFLAGS = -O2 -target bpf -c -g
+CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g
 USERSPACE_CFLAGS = -O2
 USERSPACE_LINKER_FLAGS = -L/usr/local/lib64 -lbpf
 
@@ -12,6 +12,14 @@ USERSPACE_BIN = $(USERSPACE_SRC:.c=.out)
 BPF_SRC = page_cache_ext_simple.bpf.c
 BPF_OBJ = $(BPF_SRC:.c=.o)
 BPF_SKEL = $(BPF_SRC:bpf.c=skel.h)
+
+ARCH ?= $(shell uname -m | sed 's/x86_64/x86/' \
+			 | sed 's/arm.*/arm/' \
+			 | sed 's/aarch64/arm64/' \
+			 | sed 's/ppc64le/powerpc/' \
+			 | sed 's/mips.*/mips/' \
+			 | sed 's/riscv64/riscv/' \
+			 | sed 's/loongarch64/loongarch/')
 
 VMLINUX_H = vmlinux.h
 
