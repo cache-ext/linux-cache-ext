@@ -12242,7 +12242,7 @@ struct bpf_link *bpf_map__attach_cache_ext_ops(const struct bpf_map *map, int cg
 		return libbpf_err_ptr(err);
 	}
 
-	link->link.detach = bpf_link__detach_struct_ops;
+	link->link.detach = bpf_link__detach_cache_ext_ops;
 
 	if (!(map->def.map_flags & BPF_F_LINK)) {
 		/* w/o a real link */
