@@ -68,6 +68,7 @@
 #include <linux/proc_fs.h>
 #include <linux/minmax.h>
 #include <linux/rwsem.h>
+#include <linux/cache_ext.h>
 #include "internal.h"
 #include <net/sock.h>
 #include <net/ip.h>
@@ -378,7 +379,7 @@ static inline uintptr_t folio_ptr_to_key (struct folio *folio) {
 	return (uintptr_t)folio;
 }
 
-static inline struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio) {
+inline struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio) {
 	// Get cgroup from folio
 	struct mem_cgroup *memcg = folio_memcg(folio);
 	// Get pgdat from folio
@@ -402,7 +403,7 @@ inline struct valid_folios_set *lruvec_to_valid_folios_set(struct lruvec *lruvec
 	return valid_folios_set;
 }
 
-static inline spinlock_t *get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio) {
+spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio) {
 	uintptr_t key = folio_ptr_to_key(folio);
 	int bkt = hash_bucket_idx(valid_folios_set->valid_folios, key);
 	if (bkt < 0 || bkt >= 1024) {
@@ -412,7 +413,7 @@ static inline spinlock_t *get_bucket_lock(struct valid_folios_set *valid_folios_
 	return &valid_folios_set->bucket_locks[bkt];
 }
 
-struct valid_folios_set* init_valid_folios_set(int node) {
+	struct valid_folios_set* init_valid_folios_set(int node) {
 	struct valid_folios_set *valid_folios_set;
 	valid_folios_set = kzalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
 	hash_init(valid_folios_set->valid_folios);
@@ -439,19 +440,23 @@ void valid_folios_add(struct folio *folio) {
 	if (in_interrupt()) {
 		pr_err("valid_folios_add called in irq mode!\n");
 	}
+	// TODO: Error check this!
 	struct valid_folio *new = kmalloc(sizeof(struct valid_folio), GFP_KERNEL);
+	struct cache_ext_list_node *node = cache_ext_list_node_alloc(folio);
 	new->folio_ptr = folio_ptr_to_key(folio);
 	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
 	// Lock the bucket
-	spinlock_t *bucket_lock = get_bucket_lock(valid_folios_set, folio);
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
 	spin_lock(bucket_lock);
 	// Use valid_folios_exists function to check if the folio is already in the valid folio hash table
 	if (valid_folios_exists(valid_folios_set, folio)) {
 		spin_unlock(bucket_lock);
 		kfree(new);
+		cache_ext_list_node_free(node);
 		return;
 	}
 	// The folio is valid, so we add it to the valid folio hash table
+	new->cache_ext_node = node;
 	hash_add(valid_folios_set->valid_folios, &new->h_node, new->folio_ptr);
 	spin_unlock(bucket_lock);
 	atomic64_fetch_add(1, &valid_folios_set->nr_entries);
@@ -467,12 +472,15 @@ void valid_folios_del(struct folio *folio) {
 	}
 	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
 	struct valid_folio *cur;
-	spinlock_t *bucket_lock = get_bucket_lock(valid_folios_set, folio);
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
 	spin_lock(bucket_lock);
 	uintptr_t key = folio_ptr_to_key(folio);
 	hash_for_each_possible(valid_folios_set->valid_folios, cur, h_node, key) {
 		if (cur->folio_ptr == key) {
 			hash_del(&cur->h_node);
+			// TODO: If BPF has not removed it we are screwed!
+			// Change to dealloc in BPF.
+			cache_ext_list_node_free(cur->cache_ext_node);
 			kfree(cur);
 			spin_unlock(bucket_lock);
 			atomic64_fetch_add(-1, &valid_folios_set->nr_entries);
@@ -483,7 +491,7 @@ void valid_folios_del(struct folio *folio) {
 }
 
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio) {
-	// TODO: Add RCU.
+	// TODO: Add read lock.
 	// Use hash_for_each_possible to iterate over the valid folio hash table
 	// and check if the folio is valid
 	struct valid_folio *cur;
@@ -498,6 +506,18 @@ bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio
 
 u64 valid_folios_get_nr_entries(struct valid_folios_set *valid_folios_set) {
 	return (u64) (atomic64_read(&valid_folios_set->nr_entries));
+}
+
+struct valid_folio *valid_folios_lookup(struct folio *folio) {
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	struct valid_folio *cur;
+	uintptr_t key = folio_ptr_to_key(folio);
+	hash_for_each_possible(valid_folios_set->valid_folios, cur, h_node, key) {
+		if (cur->folio_ptr == key) {
+			return cur;
+		}
+	}
+	return NULL;
 }
 
 static u64 mem_cgroup_page_tracking_nr_entries_read(
@@ -516,6 +536,8 @@ static u64 mem_cgroup_page_tracking_nr_entries_read(
 	return total_entries;
 	return mem_cgroup_swappiness(memcg);
 }
+
+
 
 
 /*
@@ -5527,6 +5549,7 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 	lruvec_init(&pn->lruvec);
 	pn->memcg = memcg;
 	pn->valid_folios_set = init_valid_folios_set(node);
+	cache_ext_ds_registry_init(&pn->cache_ext_ds_registry);
 
 	memcg->nodeinfo[node] = pn;
 	return 0;

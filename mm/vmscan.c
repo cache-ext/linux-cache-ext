@@ -1418,6 +1418,8 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	 * and thus under the i_pages lock, then this ordering is not required.
 	 */
 	refcount = 1 + folio_nr_pages(folio);
+	// TODO: Maybe we need to be getting a refcount in valid_folios_set and
+	// be dropping it here.
 	if (!folio_ref_freeze(folio, refcount))
 		goto cannot_free;
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */

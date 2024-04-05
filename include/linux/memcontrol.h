@@ -22,6 +22,7 @@
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
 #include <linux/hashtable.h>
+#include <linux/cache_ext.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -84,6 +85,7 @@ struct valid_folios_set {
 struct valid_folio {
 	struct hlist_node h_node;
 	uintptr_t folio_ptr;
+	struct cache_ext_list_node *cache_ext_node;
 };
 
 
@@ -93,8 +95,11 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
 void valid_folios_add(struct folio *folio);
 void valid_folios_del(struct folio *folio);
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
-inline struct valid_folios_set * lruvec_to_valid_folios_set(struct lruvec *lruvec);
-inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg);
+struct valid_folios_set * lruvec_to_valid_folios_set(struct lruvec *lruvec);
+struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg);
+struct valid_folio *valid_folios_lookup(struct folio *folio);
+struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio);
+spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio);
 
 #define MEM_CGROUP_ID_SHIFT	16
 
@@ -160,6 +165,7 @@ struct lruvec_stats {
 struct mem_cgroup_per_node {
 	struct lruvec		lruvec;
 	struct valid_folios_set *valid_folios_set;
+	struct cache_ext_ds_registry cache_ext_ds_registry;
 
 	struct lruvec_stats_percpu __percpu	*lruvec_stats_percpu;
 	struct lruvec_stats			lruvec_stats;
