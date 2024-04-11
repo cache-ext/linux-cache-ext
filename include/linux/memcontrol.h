@@ -100,6 +100,11 @@ struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg);
 struct valid_folio *valid_folios_lookup(struct folio *folio);
 struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio);
 spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio);
+void valid_folios_clear_list(struct valid_folios_set *valid_folios_set);
+inline struct valid_folios_set *memcg_to_valid_folios_set(struct mem_cgroup *memcg);
+
+// Misc for cache_ext
+struct mem_cgroup *page_cache_ext_get_enabled_memcg(void);
 
 #define MEM_CGROUP_ID_SHIFT	16
 

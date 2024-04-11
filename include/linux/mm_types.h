@@ -1387,6 +1387,7 @@ struct page_cache_ext_eviction_ctx {
 // TODO: How can I make only some fields page_cache_ext_eviction_ctx writeable?
 struct page_cache_ext_ops {
 	// Implement bpf_verifier_ops
+	s32  (*init)(void);
 	void (*evict_folios)(struct page_cache_ext_eviction_ctx *ctx);
 	void (*folio_added)(struct folio *folio);
 	void (*folio_accessed)(struct folio *folio);

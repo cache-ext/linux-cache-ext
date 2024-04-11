@@ -73,6 +73,18 @@ static int bpf_page_cache_ext_btf_struct_access(struct bpf_verifier_log *log,
 
 static int bpf_page_cache_ext_reg(void *kdata)
 {
+	struct page_cache_ext_ops *ops = kdata;
+	int ret = 0;
+	pr_info("page_cache_ext: Calling init\n");
+	if (ops->init) {
+		ret = ops->init();
+		if (ret) {
+			pr_err("page_cache_ext: init failed with error code: %d\n",
+			       ret);
+			return ret;
+		}
+	}
+
 	pr_info("page_cache_ext: Registering struct ops\n");
 	WRITE_ONCE(page_cache_ext_ops, kdata);
 	return 0;
@@ -80,10 +92,15 @@ static int bpf_page_cache_ext_reg(void *kdata)
 
 static void bpf_page_cache_ext_unreg(void *kdata)
 {
-	// Opposite of bpf_page_cache_ext_reg.
-	// Not needed yet.
 	pr_info("page_cache_ext: Unregistering struct ops\n");
 	WRITE_ONCE(page_cache_ext_ops, NULL);
+
+	// Delete the registry and all data structures from the memory cgroup.
+	struct mem_cgroup *memcg = page_cache_ext_get_enabled_memcg();
+	if (memcg == NULL) {
+		pr_crit("page_cache_ext: failed to get memcg for release!\n");
+	}
+	cache_ext_ds_registry_del_all(memcg);
 }
 
 static int bpf_page_cache_ext_init_member(const struct btf_type *t,
@@ -101,7 +118,7 @@ static int bpf_page_cache_ext_check_member(const struct btf_type *t,
 					   const struct bpf_prog *prog)
 {
 	// Check the attached member functions or attributes.
-	// Not needed yet.
+	// TODO: Check sleepability here!
 	return 0;
 }
 

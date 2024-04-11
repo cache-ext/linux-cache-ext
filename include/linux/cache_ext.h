@@ -1,11 +1,17 @@
+#ifndef _LINUX_CACHE_EXT_H
+#define _LINUX_CACHE_EXT_H 1
+
 /*
  * BPF-Exposed data structures for page_cache_ext.
  */
 
 #include <linux/list.h>
+#include <linux/hashtable.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
-#include <linux/bpf.h>
+// #include <linux/bpf.h>
+
+typedef u64 (*bpf_callback_t)(u64, u64, u64, u64, u64);
 
 /******************************************************************************
  * Linked List ****************************************************************
@@ -27,13 +33,11 @@ struct cache_ext_list {
 	struct list_head head;
 	// This is for the ds registry.
 	struct hlist_node h_node;
-	rwlock_t lock;
 };
 
 struct cache_ext_list_node {
 	struct folio *folio;
 
-	atomic64_t list_backptr;
 	struct list_head node;
 };
 
@@ -41,18 +45,20 @@ struct cache_ext_list_node {
  * API
  */
 
+struct cache_ext_list *cache_ext_list_alloc(void);
 struct cache_ext_list_node *cache_ext_list_node_alloc(struct folio *folio);
 void cache_ext_list_node_free(struct cache_ext_list_node *node);
 int cache_ext_list_add(struct cache_ext_list *list, struct folio *folio);
 int cache_ext_list_add_tail(struct cache_ext_list *list, struct folio *folio);
 int cache_ext_list_del(struct folio *folio);
-int cache_ext_list_iterate(struct cache_ext_list *list, bpf_callback_t cb,
+int cache_ext_list_iterate(struct folio *folio, struct cache_ext_list *list,
+			   bpf_callback_t cb,
 			   struct page_cache_ext_eviction_ctx *ctx);
-
 /*
  * page_cache_ext data structure registry.
  */
 
+ #define CACHE_EXT_REGISTRY_MAX_ENTRIES 5
 
 // NOTE: For now, tie the registry lifetime to the struct_ops lifetime.
 // Release all the data structures when the struct_ops is released.
@@ -61,6 +67,15 @@ int cache_ext_list_iterate(struct cache_ext_list *list, bpf_callback_t cb,
 struct cache_ext_ds_registry {
 	DECLARE_HASHTABLE(ds_hash, 5);
 	rwlock_t lock;
+	int nr_entries;
 };
 
 void cache_ext_ds_registry_init(struct cache_ext_ds_registry *registry);
+void cache_ext_ds_registry_read_lock(struct folio *folio);
+void cache_ext_ds_registry_read_unlock(struct folio *folio);
+void cache_ext_ds_registry_write_lock(struct folio *folio);
+void cache_ext_ds_registry_write_unlock(struct folio *folio);
+void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg);
+struct cache_ext_list *cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
+
+#endif // _LINUX_CACHE_EXT_H
