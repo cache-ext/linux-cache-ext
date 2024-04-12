@@ -30,70 +30,116 @@ char _license[] SEC("license") = "GPL";
 // Map to store the linked list pointer
 // Single key-value
 // This is not working. Maybe we need to register destructors for cache_ext_list?
-struct map_value {
-	struct cache_ext_list __kptr_untrusted *mru_list;
-};
+
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__type(key, int);
-	__type(value, struct map_value);
+	__type(value, u64);
 	__uint(max_entries, 1);
 } mru_list_map SEC(".maps");
 
-inline struct cache_ext_list *get_mru_list()
+inline u64 get_mru_list()
 {
 	int zero = 0;
-	struct map_value *v = bpf_map_lookup_elem(&mru_list_map, &zero);
-	if (!v) {
-		return NULL;
+	u64 *mru_list;
+	mru_list = bpf_map_lookup_elem(&mru_list_map, &zero);
+	if (!mru_list) {
+		return 0;
 	}
-	return v->mru_list;
+	return *mru_list;
 }
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(mru_init, struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_init hook! :D\n");
 	int zero = 0;
-	struct cache_ext_list *mru_list;
-	struct map_value map_value = {}, *map_value_ptr;
-	bpf_map_update_elem(&mru_list_map, &zero, &map_value, BPF_NOEXIST);
-	map_value_ptr = bpf_map_lookup_elem(&mru_list_map, &zero);
-	if (!map_value_ptr) {
-		bpf_printk("page_cache_ext: Failed to lookup mru_list_map\n");
-		return -1;
-	}
-	if (map_value_ptr->mru_list) {
-		bpf_printk("page_cache_ext: map_value_ptr->mru_list already exists\n");
-		return -1;
-	}
-	mru_list = cache_ext_ds_registry_new_list(memcg);
-	if (!mru_list) {
+	u64 mru_list = bpf_cache_ext_ds_registry_new_list(memcg);
+	if (mru_list == 0) {
 		bpf_printk("page_cache_ext: Failed to create mru_list\n");
 		return -1;
 	}
-	bpf_kptr_xchg(&map_value_ptr->mru_list, mru_list);
+	bpf_printk("page_cache_ext: Created mru_list: %llu\n", mru_list);
+	bpf_map_update_elem(&mru_list_map, &zero, &mru_list, BPF_ANY);
 	return 0;
-}
-
-void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
-{
-	dbg_printk("page_cache_ext: Hi from the mru_folio_accessed hook! :D\n");
-}
-
-void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
-{
-	dbg_printk("page_cache_ext: Hi from the mru_folio_evicted hook! :D\n");
 }
 
 void BPF_STRUCT_OPS(mru_folio_added, struct folio *folio)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_folio_added hook! :D\n");
+	u64 mru_list = get_mru_list();
+	if (mru_list == 0) {
+		bpf_printk("page_cache_ext: Failed to get mru_list\n");
+		return;
+	}
+	int ret = bpf_cache_ext_list_add(mru_list, folio);
+	if (ret != 0) {
+		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
+		return;
+	}
+	bpf_printk("page_cache_ext: Added folio to mru_list\n");
+}
+
+void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
+{
+	int ret;
+	u64 mru_list;
+	dbg_printk("page_cache_ext: Hi from the mru_folio_accessed hook! :D\n");
+
+	ret = bpf_cache_ext_list_del(folio);
+	if (ret != 0) {
+		bpf_printk(
+			"page_cache_ext: Failed to delete folio from mru_list\n");
+		return;
+	}
+	mru_list = get_mru_list();
+	if (mru_list == 0) {
+		bpf_printk("page_cache_ext: Failed to get mru_list\n");
+		return;
+	}
+	ret = bpf_cache_ext_list_add_tail(mru_list, folio);
+	if (ret != 0) {
+		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
+		return;
+	}
+	bpf_printk("page_cache_ext: Moved folio to mru_list tail\n");
+}
+
+void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
+{
+	dbg_printk("page_cache_ext: Hi from the mru_folio_evicted hook! :D\n");
+	u64 mru_list = get_mru_list();
+	if (mru_list == 0) {
+		bpf_printk(
+			"page_cache_ext: Failed to get mru_list on evicted path\n");
+		return;
+	}
+	bpf_cache_ext_list_del(folio);
+}
+
+static int iterate_mru(u64 list, struct cache_ext_list_node *node,
+		       struct page_cache_ext_eviction_ctx *ctx)
+{
+	if (ctx->request_nr_folios_to_evict - ctx->nr_folios_to_evict <= 0) {
+		return CACHE_EXT_STOP_ITER;
+	}
+	ctx->folios_to_evict[ctx->nr_folios_to_evict - 1] = node->folio;
+	ctx->nr_folios_to_evict++;
+	return 0;
 }
 
 void BPF_STRUCT_OPS(mru_evict_folios,
-		    struct page_cache_ext_eviction_ctx *eviction_ctx)
+		    struct page_cache_ext_eviction_ctx *eviction_ctx,
+		    struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
+	u64 mru_list = get_mru_list();
+	if (mru_list == 0) {
+		bpf_printk(
+			"page_cache_ext: Failed to get mru_list on eviction path\n");
+		return;
+	}
+	int ret = bpf_cache_ext_list_iterate(memcg, mru_list, iterate_mru,
+					     eviction_ctx);
 }
 
 SEC(".struct_ops.link")

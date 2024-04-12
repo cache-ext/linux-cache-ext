@@ -42,23 +42,30 @@ struct cache_ext_list_node {
 };
 
 /*
- * API
+ * BPF API
  */
 
-struct cache_ext_list *cache_ext_list_alloc(void);
+int bpf_cache_ext_list_add(u64 list, struct folio *folio);
+int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio);
+int bpf_cache_ext_list_del(struct folio *folio);
+int bpf_cache_ext_list_iterate(
+	struct mem_cgroup *memcg, u64 list,
+	int(iter_fn)(u64 list, struct cache_ext_list_node *node,
+		     struct page_cache_ext_eviction_ctx *ctx),
+	struct page_cache_ext_eviction_ctx *ctx);
+u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
+
+/*
+ * Used by the valid_folios_set code
+ */
 struct cache_ext_list_node *cache_ext_list_node_alloc(struct folio *folio);
 void cache_ext_list_node_free(struct cache_ext_list_node *node);
-int cache_ext_list_add(struct cache_ext_list *list, struct folio *folio);
-int cache_ext_list_add_tail(struct cache_ext_list *list, struct folio *folio);
-int cache_ext_list_del(struct folio *folio);
-int cache_ext_list_iterate(struct folio *folio, struct cache_ext_list *list,
-			   bpf_callback_t cb,
-			   struct page_cache_ext_eviction_ctx *ctx);
+
 /*
  * page_cache_ext data structure registry.
  */
 
- #define CACHE_EXT_REGISTRY_MAX_ENTRIES 5
+#define CACHE_EXT_REGISTRY_MAX_ENTRIES 5
 
 // NOTE: For now, tie the registry lifetime to the struct_ops lifetime.
 // Release all the data structures when the struct_ops is released.
@@ -77,5 +84,10 @@ void cache_ext_ds_registry_write_lock(struct folio *folio);
 void cache_ext_ds_registry_write_unlock(struct folio *folio);
 void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg);
 struct cache_ext_list *cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
-
+struct cache_ext_list *
+cache_ext_ds_registry_get(struct cache_ext_ds_registry *registry, u64 list_ptr);
+struct cache_ext_ds_registry *
+cache_ext_ds_registry_from_folio(struct folio *folio);
+struct cache_ext_ds_registry *
+cache_ext_ds_registry_from_memcg(struct mem_cgroup *memcg);
 #endif // _LINUX_CACHE_EXT_H

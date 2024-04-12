@@ -278,6 +278,10 @@ void page_cache_ext_enabled_cgroup_init(void) {
 struct mem_cgroup *page_cache_ext_get_enabled_memcg(void) {
 	struct mem_cgroup *memcg;
 	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	if (page_cache_ext_enabled_cgroup.cgroup == NULL) {
+		up_read(&page_cache_ext_enabled_cgroup.rwsem);
+		return NULL;
+	}
 	memcg = mem_cgroup_from_css(page_cache_ext_enabled_cgroup.cgroup->subsys[memory_cgrp_id]);
 	up_read(&page_cache_ext_enabled_cgroup.rwsem);
 	return memcg;

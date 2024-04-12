@@ -111,6 +111,7 @@ int cache_ext_list_del(struct folio *folio)
 	spin_lock(bucket_lock);
 	struct valid_folio *valid_folio = valid_folios_lookup(folio);
 	if (!valid_folio) {
+		spin_unlock(bucket_lock);
 		return -1;
 	}
 
@@ -125,6 +126,7 @@ int cache_ext_list_del(struct folio *folio)
 	}
 	// TODO: When deleting, don't poison the pointers.
 	list_del(&valid_folio->cache_ext_node->node);
+	INIT_LIST_HEAD(&valid_folio->cache_ext_node->node);
 
 	cache_ext_ds_registry_write_unlock(folio);
 	spin_unlock(bucket_lock);
@@ -134,15 +136,18 @@ int cache_ext_list_del(struct folio *folio)
 #define CACHE_EXT_STOP_ITER 7
 #define CACHE_EXT_MAX_ITER_REACHED 8
 
-int cache_ext_list_iterate(struct folio *folio, struct cache_ext_list *list,
-			   bpf_callback_t cb,
+int cache_ext_list_iterate(struct mem_cgroup *memcg,
+			   struct cache_ext_list *list, void *iter_fn,
 			   struct page_cache_ext_eviction_ctx *ctx)
 {
 	uint64_t ret = 0, iter = 0;
 	uint64_t max_iter = 512;
 	struct cache_ext_list_node *node;
+	bpf_callback_t bpf_iter_fn = (bpf_callback_t)iter_fn;
 
-	cache_ext_ds_registry_read_lock(folio);
+	struct cache_ext_ds_registry *registry =
+		cache_ext_ds_registry_from_memcg(memcg);
+	read_lock(&registry->lock);
 	list_for_each_entry(node, &list->head, node) {
 		iter++;
 		if (iter > max_iter) {
@@ -151,7 +156,7 @@ int cache_ext_list_iterate(struct folio *folio, struct cache_ext_list *list,
 		}
 		// TODO: Ensure that we don't let the callback use any of the list
 		// helpers, or we will have a deadlock.
-		ret = cb((u64)list, (u64)node, (u64)ctx, 0, 0);
+		ret = bpf_iter_fn((u64)list, (u64)node, (u64)ctx, (u64)0, (u64)0);
 		if (ret != 0) {
 			if (ret == CACHE_EXT_STOP_ITER) {
 				ret = 0;
@@ -159,7 +164,7 @@ int cache_ext_list_iterate(struct folio *folio, struct cache_ext_list *list,
 			break;
 		}
 	}
-	cache_ext_ds_registry_read_unlock(folio);
+	read_unlock(&registry->lock);
 	return ret;
 }
 
@@ -177,12 +182,51 @@ int cache_ext_list_free(struct cache_ext_list *list)
 	return 0;
 }
 
+// BPF API
+
+int bpf_cache_ext_list_add(u64 list, struct folio *folio)
+{
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
+		cache_ext_ds_registry_from_folio(folio), list);
+	if (!list_ptr) {
+		return -1;
+	}
+	return cache_ext_list_add(list_ptr, folio);
+};
+
+int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio)
+{
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
+		cache_ext_ds_registry_from_folio(folio), list);
+	if (!list_ptr) {
+		return -1;
+	}
+
+	return cache_ext_list_add_tail(list_ptr, folio);
+};
+
+int bpf_cache_ext_list_del(struct folio *folio)
+{
+	return cache_ext_list_del(folio);
+};
+
+int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
+			       int (iter_fn)(u64 list, struct cache_ext_list_node *node, struct page_cache_ext_eviction_ctx *ctx),
+			       struct page_cache_ext_eviction_ctx *ctx)
+{
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
+		cache_ext_ds_registry_from_memcg(memcg), list);
+	if (!list_ptr) {
+		return -1;
+	}
+	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
+};
+
 BTF_SET8_START(cache_ext_list_ops)
-BTF_ID_FLAGS(func, cache_ext_list_node_alloc, KF_ACQUIRE | KF_RET_NULL)
-BTF_ID_FLAGS(func, cache_ext_list_add, KF_RELEASE)
-BTF_ID_FLAGS(func, cache_ext_list_add_tail, KF_RELEASE)
-BTF_ID_FLAGS(func, cache_ext_list_del)
-BTF_ID_FLAGS(func, cache_ext_list_iterate)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_add)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_SET8_END(cache_ext_list_ops)
 
 static const struct btf_kfunc_id_set cache_ext_kfunc_set_list_ops = {
@@ -260,6 +304,12 @@ cache_ext_ds_registry_from_folio(struct folio *folio)
 	return &node_cgroup->cache_ext_ds_registry;
 }
 
+struct cache_ext_ds_registry *
+cache_ext_ds_registry_from_mem_cgroup(struct mem_cgroup *memcg)
+{
+	return &memcg->nodeinfo[0]->cache_ext_ds_registry;
+}
+
 void cache_ext_ds_registry_read_lock(struct folio *folio)
 {
 	struct cache_ext_ds_registry *registry =
@@ -300,15 +350,22 @@ void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg)
 		hash_del(&cur_list->h_node);
 		cache_ext_list_free(cur_list);
 	}
+	registry->nr_entries = 0;
 	write_unlock(&registry->lock);
 	struct valid_folios_set *valid_folios_set =
 		memcg_to_valid_folios_set(memcg);
 	valid_folios_clear_list(valid_folios_set);
 }
 
+// BPF API
+
+u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg)
+{
+	return (u64)cache_ext_ds_registry_new_list(memcg);
+}
+
 BTF_SET8_START(cache_ext_registry_ops)
-BTF_ID_FLAGS(func, cache_ext_ds_registry_new_list,
-	     KF_ACQUIRE | KF_RET_NULL | KF_SLEEPABLE)
+BTF_ID_FLAGS(func, bpf_cache_ext_ds_registry_new_list, KF_SLEEPABLE)
 BTF_SET8_END(cache_ext_registry_ops)
 
 static const struct btf_kfunc_id_set cache_ext_kfunc_set_registry_ops = {

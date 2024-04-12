@@ -6338,6 +6338,7 @@ static bool page_cache_ext_isolate_folio(struct folio *folio) {
 static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 	unsigned long nr_to_evict, struct page_cache_ext_ops *pcext_ops) {
 
+	int ret = 0;
 	LIST_HEAD(free_folios);
 	unsigned long nr_reclaimed = 0, nr_reclaimed_for_batch = 0;
 	struct page_cache_ext_eviction_ctx *ctx = kzalloc(sizeof(struct page_cache_ext_eviction_ctx), GFP_KERNEL);
@@ -6347,10 +6348,11 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 	}
 	pr_debug("page_cache_ext: Trying to evict %lu pages\n", nr_to_evict);
 	ctx->request_nr_folios_to_evict = nr_to_evict;
-	pcext_ops->evict_folios(ctx);
+	pcext_ops->evict_folios(ctx, lruvec_memcg(lruvec));
 	if (ctx->nr_folios_to_evict > ARRAY_SIZE(ctx->folios_to_evict)) {
 		pr_err("page_cache_ext: nr_folios_evicted bigger than array size!\n");
-		return 0;
+		ret = 0;
+		goto free;
 	}
 	if (ctx->nr_folios_to_evict == 0) {
 		pr_err_ratelimited("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
@@ -6380,6 +6382,8 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 		nr_reclaimed += nr_reclaimed_for_batch;
 	}
 	// TODO: Add some watchdog mechanism. If the hook is not performing adequetely, skip it.
+free:
+	kfree(ctx);
 	return nr_reclaimed;
 }
 

@@ -1388,7 +1388,7 @@ struct page_cache_ext_eviction_ctx {
 struct page_cache_ext_ops {
 	// Implement bpf_verifier_ops
 	s32  (*init)(struct mem_cgroup *memcg);
-	void (*evict_folios)(struct page_cache_ext_eviction_ctx *ctx);
+	void (*evict_folios)(struct page_cache_ext_eviction_ctx *ctx, struct mem_cgroup *memcg);
 	void (*folio_added)(struct folio *folio);
 	void (*folio_accessed)(struct folio *folio);
 	void (*folio_evicted)(struct folio *folio);
