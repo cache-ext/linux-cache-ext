@@ -278,7 +278,7 @@ void page_cache_ext_enabled_cgroup_init(void) {
 struct mem_cgroup *page_cache_ext_get_enabled_memcg(void) {
 	struct mem_cgroup *memcg;
 	down_read(&page_cache_ext_enabled_cgroup.rwsem);
-	memcg = (struct mem_cgroup *) page_cache_ext_enabled_cgroup.cgroup;
+	memcg = mem_cgroup_from_css(page_cache_ext_enabled_cgroup.cgroup->subsys[memory_cgrp_id]);
 	up_read(&page_cache_ext_enabled_cgroup.rwsem);
 	return memcg;
 }
@@ -365,6 +365,9 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
 inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
 	if (memcg && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
+		pr_info_ratelimited("page_cache_ext: mem_cg pointer: %p\n", memcg);
+		pr_info_ratelimited("page_cache_ext: cgroup pointer: %p\n", memcg->css.cgroup);
+
 		return READ_ONCE(page_cache_ext_ops);
 	}
 	return NULL;

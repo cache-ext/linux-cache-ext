@@ -1,5 +1,6 @@
 # Define the compiler and the flags
-CLANG ?= clang
+# See: https://stackoverflow.com/questions/76035116/cannot-use-ebpf-kptr-ref-feature
+CLANG ?= clang-15
 BPFTOOL ?= bpftool
 CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g
 USERSPACE_CFLAGS = -O2
@@ -37,10 +38,12 @@ all: page_cache_ext_mru.out page_cache_ext_simple.out
 $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
 
+.SECONDARY:
 %.bpf.o: %.bpf.c $(VMLINUX_H)
 	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $< -o $@
 
-%.skel.h: %.bpf.o
+.SECONDARY:
+%.skel.h: %.bpf.o $(VMLINUX_H)
 	$(BPFTOOL) gen skeleton $< > $@
 
 %.out: %.c %.skel.h

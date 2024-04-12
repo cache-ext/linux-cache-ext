@@ -4,6 +4,7 @@
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
 #include <linux/btf.h>
+#include <linux/memcontrol.h>
 
 // extern struct bpf_struct_ops bpf_page_cache_ext_ops;
 static const struct btf_type *page_cache_ext_eviction_ctx_type;
@@ -75,9 +76,15 @@ static int bpf_page_cache_ext_reg(void *kdata)
 {
 	struct page_cache_ext_ops *ops = kdata;
 	int ret = 0;
+	// Get the memory cgroup
+	struct mem_cgroup *memcg = page_cache_ext_get_enabled_memcg();
+	if (memcg == NULL) {
+		pr_crit("page_cache_ext: failed to get memcg for registration!\n");
+		return -EINVAL;
+	}
 	pr_info("page_cache_ext: Calling init\n");
 	if (ops->init) {
-		ret = ops->init();
+		ret = ops->init(memcg);
 		if (ret) {
 			pr_err("page_cache_ext: init failed with error code: %d\n",
 			       ret);
@@ -99,7 +106,9 @@ static void bpf_page_cache_ext_unreg(void *kdata)
 	struct mem_cgroup *memcg = page_cache_ext_get_enabled_memcg();
 	if (memcg == NULL) {
 		pr_crit("page_cache_ext: failed to get memcg for release!\n");
+		return;
 	}
+	pr_info("page_cache_ext: unreg: Memcg pointer: %p\n", memcg);
 	cache_ext_ds_registry_del_all(memcg);
 }
 
