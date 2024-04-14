@@ -14,6 +14,7 @@
 #include <bpf/libbpf.h>
 
 #include "basic.skel.h"
+#include "basic2.skel.h"
 
 #define CGROUP_1 "/sys/fs/cgroup/cache_ext_1/"
 #define CGROUP_2 "/sys/fs/cgroup/cache_ext_2/"
@@ -68,6 +69,55 @@ void attach_map_to_cgroup(char *cg) {
     return;
 }
 
+void attach_map_to_cgroup_2(char *cg) {
+    struct bpf_object *obj;
+    struct bpf_map *map;
+    int cgfd = open(cg, O_RDONLY);
+    if (cgfd < 0) {
+        perror("cgfd");
+        exit(1);
+    }
+
+    int ret;
+    struct basic2_bpf *skel;
+    struct bpf_link *link;
+    libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+    // Open skel
+    skel = basic2_bpf__open();
+    if (skel == NULL) {
+        // Check errno for error
+        fprintf(stderr, "Failed to open BPF skeleton: %s\n",
+                strerror(errno));
+        exit(1);
+    }
+    // Load programs
+    ret = basic2_bpf__load(skel);
+    if (ret) {
+        fprintf(stderr, "Failed to load BPF skeleton: %s\n",
+                strerror(errno));
+        basic2_bpf__destroy(skel);
+        exit(1);
+    }
+    // Load struct_ops map
+    link = bpf_map__attach_cache_ext_ops(skel->maps.simple_ops,cgfd);
+    if (link == NULL) {
+        fprintf(stderr, "Failed to attach BPF struct_ops map: %s\n",
+                strerror(errno));
+        basic2_bpf__destroy(skel);
+        exit(1);
+    }
+
+    // Wait for keyboard input
+    printf("Press any key to exit...\n");
+    getchar();
+
+    // Exit
+    bpf_link__destroy(link);
+    basic2_bpf__destroy(skel);
+
+    return;
+}
+
 int main() {
     char cgroup_path[PATH_MAX-13];
     char cgroup_procs_path[PATH_MAX];
@@ -84,7 +134,7 @@ int main() {
     if (p > 0) {
         attach_map_to_cgroup(CGROUP_1);
     } else {
-        attach_map_to_cgroup(CGROUP_2);
+        attach_map_to_cgroup_2(CGROUP_2);
     }
 }
 

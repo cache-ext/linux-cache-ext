@@ -13,6 +13,10 @@ BPF_SRC = basic.bpf.c
 BPF_OBJ = $(BPF_SRC:.c=.o)
 BPF_SKEL = $(BPF_SRC:bpf.c=skel.h)
 
+BPF_SRC_2 = basic2.bpf.c
+BPF_OBJ_2 = $(BPF_SRC_2:.c=.o)
+BPF_SKEL_2 = $(BPF_SRC_2:bpf.c=skel.h)
+
 VMLINUX_H = vmlinux.h
 
 # Get Clang's default includes on this system. We'll explicitly add these dirs
@@ -27,7 +31,7 @@ CLANG_BPF_SYS_INCLUDES ?= $(shell $(CLANG) -v -E - </dev/null 2>&1 \
 	| sed -n '/<...> search starts here:/,/End of search list./{ s| \(/.*\)|-idirafter \1|p }')
 
 
-all: $(BPF_OBJ) $(BPF_SKEL) $(USERSPACE_BIN)
+all: $(BPF_OBJ) $(BPF_SKEL) $(BPF_OBJ_2) $(BPF_SKEL_2) $(USERSPACE_BIN)
 
 $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
@@ -35,14 +39,20 @@ $(VMLINUX_H):
 $(BPF_OBJ): $(BPF_SRC) $(VMLINUX_H)
 	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $(BPF_SRC) -o $(BPF_OBJ)
 
+$(BPF_OBJ_2): $(BPF_SRC_2) $(VMLINUX_H)
+	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $(BPF_SRC_2) -o $(BPF_OBJ_2)
+
 $(BPF_SKEL): $(BPF_OBJ)
 	$(BPFTOOL) gen skeleton $(BPF_OBJ) > $(BPF_SKEL)
 
-$(USERSPACE_BIN): $(USERSPACE_SRC) $(BPF_SKEL)
+$(BPF_SKEL_2): $(BPF_OBJ_2)
+	$(BPFTOOL) gen skeleton $(BPF_OBJ_2) > $(BPF_SKEL_2)
+
+$(USERSPACE_BIN): $(USERSPACE_SRC) $(BPF_SKEL) $(BPF_SKEL_2)
 	$(CLANG) $(USERSPACE_CFLAGS) $(USERSPACE_SRC) -o $(USERSPACE_BIN) $(USERSPACE_LINKER_FLAGS)
 
 
 clean:
-	rm -f $(BPF_OBJ) $(USERSPACE_BIN) $(BPF_SKEL) $(VMLINUX_H)
+	rm -f $(BPF_OBJ) $(BPF_OBJ_2) $(USERSPACE_BIN) $(BPF_SKEL) $(BPF_SKEL_2) $(VMLINUX_H)
 
 .PHONY: all clean
