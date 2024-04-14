@@ -13,6 +13,8 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
+#include "basic.skel.h"
+
 #define CGROUP_1 "/sys/fs/cgroup/cache_ext_1/"
 #define CGROUP_2 "/sys/fs/cgroup/cache_ext_2/"
 #define PATH_MAX 1024
@@ -26,37 +28,44 @@ void attach_map_to_cgroup(char *cg) {
         exit(1);
     }
 
-    // Load and verify BPF application
-    obj = bpf_object__open_file("basic.bpf.o", NULL);
-    if (libbpf_get_error(obj)) {
-        fprintf(stderr, "ERROR: opening BPF object file failed\n");
-        goto out1;
+    int ret;
+    struct basic_bpf *skel;
+    struct bpf_link *link;
+    libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+    // Open skel
+    skel = basic_bpf__open();
+    if (skel == NULL) {
+        // Check errno for error
+        fprintf(stderr, "Failed to open BPF skeleton: %s\n",
+                strerror(errno));
+        exit(1);
+    }
+    // Load programs
+    ret = basic_bpf__load(skel);
+    if (ret) {
+        fprintf(stderr, "Failed to load BPF skeleton: %s\n",
+                strerror(errno));
+        basic_bpf__destroy(skel);
+        exit(1);
+    }
+    // Load struct_ops map
+    link = bpf_map__attach_cache_ext_ops(skel->maps.simple_ops,cgfd);
+    if (link == NULL) {
+        fprintf(stderr, "Failed to attach BPF struct_ops map: %s\n",
+                strerror(errno));
+        basic_bpf__destroy(skel);
+        exit(1);
     }
 
-    map = bpf_object__next_map(obj, NULL);
-    if (!map) {
-        perror("Failed to attach DEV_CGROUP program");
-        goto out;
-    }
+    // Wait for keyboard input
+    printf("Press any key to exit...\n");
+    getchar();
 
-    if (bpf_object__load(obj)) {
-        fprintf(stderr, "ERROR: loading BPF program failed\n");
-        goto out;
-    }
-
-    /* Attach bpf program */
-    if (bpf_map__attach_cache_ext_ops(map, cgfd)) {
-        perror("Failed to attach DEV_CGROUP program");
-        goto out;
-    }
+    // Exit
+    bpf_link__destroy(link);
+    basic_bpf__destroy(skel);
 
     return;
-
-out:
-    bpf_object__close(obj);
-out1:
-    close(cgfd);
-    exit(1);
 }
 
 int main() {
