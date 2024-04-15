@@ -1,5 +1,10 @@
 #!/bin/bash
 
+ign() {
+    echo "Ignoring signal, use enter to kill"
+}
+trap ign INT
+
 echo "Enter to start..."
 read
 
