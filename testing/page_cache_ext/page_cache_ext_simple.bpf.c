@@ -72,8 +72,8 @@ void BPF_STRUCT_OPS(simple_folio_accessed, struct folio *folio)
 	// Get a valid folio pointer from the test file
 	__u64 inode_no = BPF_CORE_READ(folio, mapping, host, i_ino);
 	if (inode_no != TEST_INODE_INO) {
-		dbg_printk(
-			"page_cache_ext: Got: %llu, want %llu\n", inode_no, TEST_INODE_INO);
+		dbg_printk("page_cache_ext: Got: %llu, want %llu\n", inode_no,
+			   TEST_INODE_INO);
 		return;
 	}
 	__u64 *val = bpf_map_lookup_elem(&folio_ptr_map, &zero_key);
@@ -81,13 +81,17 @@ void BPF_STRUCT_OPS(simple_folio_accessed, struct folio *folio)
 		bpf_map_update_elem(&folio_ptr_map, &zero_key, &folio,
 				    BPF_NOEXIST);
 	} else {
-		dbg_printk("page_cache_ext: Folio pointer already exists: %p\n", *val);
+		dbg_printk("page_cache_ext: Folio pointer already exists: %p\n",
+			   *val);
 	}
-
 }
 
+// SEC("struct_ops/evict_folios")
+// void simple_evict_folios(struct page_cache_ext_eviction_ctx *eviction_ctx,
+// 			 struct mem_cgroup *memcg)
 void BPF_STRUCT_OPS(simple_evict_folios,
-		    struct page_cache_ext_eviction_ctx *eviction_ctx)
+	       struct page_cache_ext_eviction_ctx *eviction_ctx,
+	       struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the eviction hook! :D\n");
 	// Try to evict the folio pointer

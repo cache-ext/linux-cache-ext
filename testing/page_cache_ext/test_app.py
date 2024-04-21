@@ -22,6 +22,12 @@ def parse_args():
         default=int(1.2 * GB),
         help="Specify the working set size",
     )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=-1,
+        help="Specify the number of iterations to run the test",
+    )
     return parser.parse_args()
 
 
@@ -40,6 +46,14 @@ def test_file_exists(path="testfile", size_in_bytes=1 * GB):
     return approx_equal(os.path.getsize(path), size_in_bytes)
 
 
+def iterate_test_file_once(f):
+    f.seek(0, os.SEEK_SET)
+    while True:
+        data = os.read(f.fileno(), 4 * KB)
+        if not data:
+            break
+
+
 def main():
     global log
     logging.basicConfig(level=logging.INFO)
@@ -51,14 +65,15 @@ def main():
     log.info("Press Ctrl+C to stop the test")
     # Open the file and read it start to end in a loop
     with open("testfile", "rb") as f:
+        # fadvise random
+        # os.posix_fadvise(f.fileno(), 0, 0, os.POSIX_FADV_RANDOM)
         # Read in 4k increments, use read system call
-        while True:
-            f.seek(0, os.SEEK_SET)
+        if args.iterations == -1:
             while True:
-                data = os.read(f.fileno(), 4 * KB)
-                if not data:
-                    break
-
+                iterate_test_file_once(f)
+        else:
+            for _ in range(args.iterations):
+                iterate_test_file_once(f)
 
 if __name__ == "__main__":
     sys.exit(main())

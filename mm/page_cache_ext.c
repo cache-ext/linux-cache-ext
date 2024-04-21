@@ -35,16 +35,15 @@ bpf_page_cache_ext_get_func_proto(enum bpf_func_id func_id,
 	}
 }
 
-// Only pass pointers as arguments. Taken from sched_ext.
+// This is the verifier's check for context access. Context is always R1.
 static bool bpf_page_cache_ext_is_valid_access(int off, int size,
 					       enum bpf_access_type type,
 					       const struct bpf_prog *prog,
 					       struct bpf_insn_access_aux *info)
 {
-	if (off < 0 || off >= sizeof(__u64) * MAX_BPF_FUNC_ARGS)
-		return false;
-	if (type != BPF_READ)
-		return false;
+	// 	return false;
+	// if (type != BPF_READ)
+	// 	return false;
 	if (off % size != 0)
 		return false;
 

@@ -76,9 +76,13 @@ struct mem_cgroup_reclaim_cookie {
  * Key: Pointer interpreted as a number.
  * Value: Nothing, we just want to check for existence.
  */
+
+#define VALID_FOLIOS_SET_SIZE_POW 11
+#define VALID_FOLIOS_SET_SIZE (1 << VALID_FOLIOS_SET_SIZE_POW)
+
 struct valid_folios_set {
-	DECLARE_HASHTABLE(valid_folios, 10);
-	spinlock_t bucket_locks[1024];
+	DECLARE_HASHTABLE(valid_folios, VALID_FOLIOS_SET_SIZE_POW);
+	spinlock_t bucket_locks[VALID_FOLIOS_SET_SIZE];
 	atomic64_t nr_entries;
 };
 
@@ -95,6 +99,7 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
 void valid_folios_add(struct folio *folio);
 void valid_folios_del(struct folio *folio);
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
+bool valid_folios_exists_unlocked(struct valid_folios_set *valid_folios_set, struct folio *folio);
 struct valid_folios_set * lruvec_to_valid_folios_set(struct lruvec *lruvec);
 struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg);
 struct valid_folio *valid_folios_lookup(struct folio *folio);

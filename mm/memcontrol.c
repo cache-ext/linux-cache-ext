@@ -263,7 +263,7 @@ struct mem_cgroup *vmpressure_to_memcg(struct vmpressure *vmpr)
 struct page_cache_ext_enabled_cgroup {
 	struct cgroup *cgroup;
 	char path[PATH_MAX];
-	struct rw_semaphore rwsem;
+	rwlock_t lock;
 };
 
 
@@ -272,25 +272,25 @@ struct page_cache_ext_enabled_cgroup page_cache_ext_enabled_cgroup;
 void page_cache_ext_enabled_cgroup_init(void) {
 	page_cache_ext_enabled_cgroup.cgroup = NULL;
 	page_cache_ext_enabled_cgroup.path[0] = '\0';
-	init_rwsem(&page_cache_ext_enabled_cgroup.rwsem);
+	rwlock_init(&page_cache_ext_enabled_cgroup.lock);
 }
 
 struct mem_cgroup *page_cache_ext_get_enabled_memcg(void) {
 	struct mem_cgroup *memcg;
-	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_lock(&page_cache_ext_enabled_cgroup.lock);
 	if (page_cache_ext_enabled_cgroup.cgroup == NULL) {
-		up_read(&page_cache_ext_enabled_cgroup.rwsem);
+		read_unlock(&page_cache_ext_enabled_cgroup.lock);
 		return NULL;
 	}
 	memcg = mem_cgroup_from_css(page_cache_ext_enabled_cgroup.cgroup->subsys[memory_cgrp_id]);
-	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_unlock(&page_cache_ext_enabled_cgroup.lock);
 	return memcg;
 }
 
 // New procfs file to read/write the cgroup
 ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
 	char __user *user_buffer, size_t count, loff_t *offset) {
-	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_lock(&page_cache_ext_enabled_cgroup.lock);
 	// Return current cgroup path stored in page_cache_ext_enabled_cgroup_path
 	ssize_t bytes_to_copy;
 	size_t len;
@@ -299,7 +299,7 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
 	// Check if offset is beyond the string length
 	len = strlen(page_cache_ext_enabled_cgroup.path);
 	if (pos >= len) {
-		up_read(&page_cache_ext_enabled_cgroup.rwsem);
+		read_unlock(&page_cache_ext_enabled_cgroup.lock);
 		return 0; // EOF
 	}
 	// Calculate the number of bytes to copy, ensuring we don't exceed count
@@ -308,7 +308,7 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
 		bytes_to_copy = count;
 	// Copy the data to user buffer
 	ret = copy_to_user(user_buffer, page_cache_ext_enabled_cgroup.path + pos, bytes_to_copy);
-	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_unlock(&page_cache_ext_enabled_cgroup.lock);
 	if (ret) {
 		return -EFAULT;
 	}
@@ -344,19 +344,19 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	}
 
 	// Change the cgroup pointer
-	down_write(&page_cache_ext_enabled_cgroup.rwsem);
+	write_lock(&page_cache_ext_enabled_cgroup.lock);
 	page_cache_ext_enabled_cgroup.cgroup = new_cgroup;
 	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, PATH_MAX);
-	up_write(&page_cache_ext_enabled_cgroup.rwsem);
+	write_unlock(&page_cache_ext_enabled_cgroup.lock);
 
 	return count;
 }
 
 bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup) {
 	bool res;
-	down_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_lock(&page_cache_ext_enabled_cgroup.lock);
 	res = (cgroup == page_cache_ext_enabled_cgroup.cgroup);
-	up_read(&page_cache_ext_enabled_cgroup.rwsem);
+	read_unlock(&page_cache_ext_enabled_cgroup.lock);
 	return res;
 }
 
@@ -369,9 +369,6 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
 inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
 	if (memcg && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
-		pr_info_ratelimited("page_cache_ext: mem_cg pointer: %p\n", memcg);
-		pr_info_ratelimited("page_cache_ext: cgroup pointer: %p\n", memcg->css.cgroup);
-
 		return READ_ONCE(page_cache_ext_ops);
 	}
 	return NULL;
@@ -425,18 +422,22 @@ inline struct valid_folios_set *lruvec_to_valid_folios_set(struct lruvec *lruvec
 spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio) {
 	uintptr_t key = folio_ptr_to_key(folio);
 	int bkt = hash_bucket_idx(valid_folios_set->valid_folios, key);
-	if (bkt < 0 || bkt >= 1024) {
+	if (bkt < 0 || bkt >= VALID_FOLIOS_SET_SIZE) {
 		pr_err("invalid bkt: %d", bkt);
 		BUG();
 	}
 	return &valid_folios_set->bucket_locks[bkt];
 }
 
-	struct valid_folios_set* init_valid_folios_set(int node) {
+struct valid_folios_set* init_valid_folios_set(int node) {
 	struct valid_folios_set *valid_folios_set;
-	valid_folios_set = kzalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
+	valid_folios_set = kmalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
+	if (!valid_folios_set) {
+		pr_err("Failed to allocate valid folios set\n");
+		return NULL;
+	}
 	hash_init(valid_folios_set->valid_folios);
-	for (int i = 0; i < 1024; i++) {
+	for (int i = 0; i < VALID_FOLIOS_SET_SIZE; i++) {
 		spin_lock_init(&valid_folios_set->bucket_locks[i]);
 	}
 	return valid_folios_set;
@@ -456,11 +457,9 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set) {
 }
 
 void valid_folios_add(struct folio *folio) {
-	if (in_interrupt()) {
-		pr_err("valid_folios_add called in irq mode!\n");
-	}
 	// TODO: Error check this!
 	struct valid_folio *new = kmalloc(sizeof(struct valid_folio), GFP_KERNEL);
+	WARN_ON_ONCE(!new);
 	struct cache_ext_list_node *node = cache_ext_list_node_alloc(folio);
 	new->folio_ptr = folio_ptr_to_key(folio);
 	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
@@ -468,7 +467,7 @@ void valid_folios_add(struct folio *folio) {
 	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
 	spin_lock(bucket_lock);
 	// Use valid_folios_exists function to check if the folio is already in the valid folio hash table
-	if (valid_folios_exists(valid_folios_set, folio)) {
+	if (valid_folios_exists_unlocked(valid_folios_set, folio)) {
 		spin_unlock(bucket_lock);
 		kfree(new);
 		cache_ext_list_node_free(node);
@@ -526,17 +525,25 @@ void valid_folios_clear_list(struct valid_folios_set *valid_folios_set) {
 	struct valid_folio *cur;
 	spinlock_t *bucket_lock;
 
-	for (int i = 0; i < 1024; i++) {
+	for (int i = 0; i < VALID_FOLIOS_SET_SIZE; i++) {
 		bucket_lock = &valid_folios_set->bucket_locks[i];
 		spin_lock(bucket_lock);
 		hlist_for_each_entry(cur, &valid_folios_set->valid_folios[i], h_node) {
-			cur->cache_ext_node = NULL;
+			INIT_LIST_HEAD(&cur->cache_ext_node->node);
 		}
 		spin_unlock(bucket_lock);
 	}
 }
 
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio) {
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+	spin_lock(bucket_lock);
+	bool ret = valid_folios_exists_unlocked(valid_folios_set, folio);
+	spin_unlock(bucket_lock);
+	return ret;
+}
+
+bool valid_folios_exists_unlocked(struct valid_folios_set *valid_folios_set, struct folio *folio) {
 	// TODO: Add read lock.
 	// Use hash_for_each_possible to iterate over the valid folio hash table
 	// and check if the folio is valid
@@ -5595,6 +5602,10 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 	lruvec_init(&pn->lruvec);
 	pn->memcg = memcg;
 	pn->valid_folios_set = init_valid_folios_set(node);
+	if (!pn->valid_folios_set) {
+		pr_crit("Failed to allocate valid folios set for node %d\n", node);
+		return 1;
+	}
 	cache_ext_ds_registry_init(&pn->cache_ext_ds_registry);
 
 	memcg->nodeinfo[node] = pn;

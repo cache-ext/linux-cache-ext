@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/cpumask.h>
 #include <net/xdp.h>
+#include <linux/cache_ext.h>
 
 #include "disasm.h"
 
@@ -3590,6 +3591,7 @@ static int backtrack_insn(struct bpf_verifier_env *env, int idx, int subseq_idx,
 			 * not actually arguments passed directly to callback
 			 * subprogs
 			 */
+			pr_info_ratelimited("verifier: kfunc");
 			if (bt_reg_mask(bt) & ~BPF_REGMASK_ARGS) {
 				verbose(env, "BUG regs %x\n", bt_reg_mask(bt));
 				WARN_ONCE(1, "verifier backtracking bug");
@@ -9230,6 +9232,40 @@ static int set_rbtree_add_callback_state(struct bpf_verifier_env *env,
 	return 0;
 }
 
+static int set_cache_ext_list_iterate_callback_state(
+	struct bpf_verifier_env *env,
+	struct bpf_func_state *caller,
+	struct bpf_func_state *callee,
+	int insn_idx)
+{
+	/*
+	 * int bpf_cache_ext_list_iterate(
+	       struct mem_cgroup *memcg,
+		   u64 list,
+		   int (iter_fn)(int idx, struct cache_ext_list_node *node),
+		   struct page_cache_ext_eviction_ctx *ctx)
+	 */
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_0]);
+
+	// Set scalar register
+	__mark_reg_unknown(env, &callee->regs[BPF_REG_1]);
+
+	// Set node pointer
+	callee->regs[BPF_REG_2].type = PTR_TO_BTF_ID;
+	__mark_reg_known_zero(&callee->regs[BPF_REG_2]);
+	callee->regs[BPF_REG_2].btf =  btf_vmlinux;
+	callee->regs[BPF_REG_2].btf_id = btf_tracing_ids[BTF_TRACING_TYPE_CACHE_EXT_LIST_NODE];
+
+	/* unused */
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_3]);
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_4]);
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_5]);
+
+	callee->in_callback_fn = true;
+	callee->callback_ret_range = tnum_range(0, 2);
+	return 0;
+}
+
 static bool is_rbtree_lock_required_kfunc(u32 btf_id);
 
 /* Are we currently verifying the callback for a rbtree helper that must
@@ -10645,7 +10681,11 @@ static bool is_bpf_graph_api_kfunc(u32 btf_id)
 
 static bool is_callback_calling_kfunc(u32 btf_id)
 {
-	return btf_id == special_kfunc_list[KF_bpf_rbtree_add_impl];
+	pr_info_ratelimited("verifier: in is_callback_calling_kfunc\n");
+	if (cache_ext_is_callback_calling_kfunc(btf_id)) {
+		pr_info("verifier: got iterator fn\n");
+	}
+	return btf_id == special_kfunc_list[KF_bpf_rbtree_add_impl] || cache_ext_is_callback_calling_kfunc(btf_id);
 }
 
 static bool is_rbtree_lock_required_kfunc(u32 btf_id)
@@ -11421,6 +11461,14 @@ static int check_kfunc_call(struct bpf_verifier_env *env, struct bpf_insn *insn,
 	if (meta.func_id == special_kfunc_list[KF_bpf_rbtree_add_impl]) {
 		err = __check_func_call(env, insn, insn_idx_p, meta.subprogno,
 					set_rbtree_add_callback_state);
+		if (err) {
+			verbose(env, "kfunc %s#%d failed callback verification\n",
+				func_name, meta.func_id);
+			return err;
+		}
+	} else if (cache_ext_is_callback_calling_kfunc(meta.func_id)) {
+		err = __check_func_call(env, insn, insn_idx_p, meta.subprogno,
+					set_cache_ext_list_iterate_callback_state);
 		if (err) {
 			verbose(env, "kfunc %s#%d failed callback verification\n",
 				func_name, meta.func_id);

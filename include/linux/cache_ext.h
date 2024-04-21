@@ -13,6 +13,8 @@
 
 typedef u64 (*bpf_callback_t)(u64, u64, u64, u64, u64);
 
+bool cache_ext_is_callback_calling_kfunc(u32 btf_id);
+
 /******************************************************************************
  * Linked List ****************************************************************
  *****************************************************************************/
@@ -48,11 +50,10 @@ struct cache_ext_list_node {
 int bpf_cache_ext_list_add(u64 list, struct folio *folio);
 int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio);
 int bpf_cache_ext_list_del(struct folio *folio);
-int bpf_cache_ext_list_iterate(
-	struct mem_cgroup *memcg, u64 list,
-	int(iter_fn)(u64 list, struct cache_ext_list_node *node,
-		     struct page_cache_ext_eviction_ctx *ctx),
-	struct page_cache_ext_eviction_ctx *ctx);
+int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
+			       int(iter_fn)(int idx,
+					    struct cache_ext_list_node *node),
+			       struct page_cache_ext_eviction_ctx *ctx);
 u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
 
 /*

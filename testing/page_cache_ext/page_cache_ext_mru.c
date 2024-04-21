@@ -11,6 +11,16 @@
 char *USAGE =
 	"Usage: ./page_cache_ext_mru\n";
 
+__s64 get_inode_ino_from_path(char *path)
+{
+	struct stat sb;
+	if (stat(path, &sb) == -1) {
+		perror("stat");
+		return -1;
+	}
+	return sb.st_ino;
+}
+
 
 int main(int argc, char **argv)
 {
@@ -26,6 +36,14 @@ int main(int argc, char **argv)
 			strerror(errno));
 		return 1;
 	}
+	__s64 test_ino = get_inode_ino_from_path("./testfile");
+	if (test_ino == -1) {
+		fprintf(stderr, "Failed to get inode number of testfile\n");
+		page_cache_ext_mru_bpf__destroy(skel);
+		return 1;
+	}
+	skel->data->TEST_INODE_INO = test_ino;
+
 	// Load programs
 	ret = page_cache_ext_mru_bpf__load(skel);
 	if (ret) {

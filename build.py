@@ -44,12 +44,14 @@ def add_debug_config_options():
         "CONFIG_DEBUG_PAGEALLOC": "y",  # might be too slow
         "CONFIG_DEBUG_SPINLOCK": "y",
         "CONFIG_DEBUG_SPINLOCK_SLEEP": "y",
+        "CONFIG_DEBUG_LOCKDEP": "y",
+        "CONFIG_PROVE_LOCKING": "y",
+        "CONFIG_LOCK_STAT": "y",
         "CONFIG_INIT_DEBUG": "y",
         "CONFIG_DEBUG_INFO": "y",
         "CONFIG_DEBUG_STACKOVERFLOW": "y",
         "CONFIG_DEBUG_STACK_USAGE": "y",
-        "CONFIG_DEBUG_STACK_USAGE": "y",
-        "CONFIG_DEBUG_KMEMLEAK": "y",
+        # "CONFIG_DEBUG_KMEMLEAK": "y",
         # General opts
         "CONFIG_RANDOMIZE_BASE": "n",
     }

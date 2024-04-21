@@ -133,8 +133,11 @@ int cache_ext_list_del(struct folio *folio)
 	return 0;
 }
 
-#define CACHE_EXT_STOP_ITER 7
+#define CACHE_EXT_CONTINUE_ITER 0
+#define CACHE_EXT_STOP_ITER 1
+#define CACHE_EXT_EVICT_NODE 2
 #define CACHE_EXT_MAX_ITER_REACHED 8
+#define CACHE_EXT_EVICT_ARRAY_FILLED 9
 
 int cache_ext_list_iterate(struct mem_cgroup *memcg,
 			   struct cache_ext_list *list, void *iter_fn,
@@ -149,18 +152,28 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 		cache_ext_ds_registry_from_memcg(memcg);
 	read_lock(&registry->lock);
 	list_for_each_entry(node, &list->head, node) {
-		iter++;
 		if (iter > max_iter) {
 			ret = CACHE_EXT_MAX_ITER_REACHED;
 			break;
 		}
 		// TODO: Ensure that we don't let the callback use any of the list
 		// helpers, or we will have a deadlock.
-		ret = bpf_iter_fn((u64)list, (u64)node, (u64)ctx, (u64)0, (u64)0);
-		if (ret != 0) {
-			if (ret == CACHE_EXT_STOP_ITER) {
-				ret = 0;
+		ret = bpf_iter_fn((u64)iter, (u64)node, (u64)0, (u64)0, (u64)0);
+		iter++;
+		if (ret == CACHE_EXT_CONTINUE_ITER) {
+			continue;
+		} else if (ret == CACHE_EXT_STOP_ITER) {
+			ret = 0;
+			break;
+		} else if (ret == CACHE_EXT_EVICT_NODE) {
+			ctx->folios_to_evict[ctx->nr_folios_to_evict] = node->folio;
+			ctx->nr_folios_to_evict++;
+			if (ctx->nr_folios_to_evict == ARRAY_SIZE(ctx->folios_to_evict)-1) {
+				ret = CACHE_EXT_EVICT_ARRAY_FILLED;
+				break;
 			}
+		} else {
+			pr_warn("cache_ext: Unknown iterate return code\n");
 			break;
 		}
 	}
@@ -169,14 +182,13 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 }
 
 /*
- * Free the list and all its nodes.
+ * Free the list.
  */
 int cache_ext_list_free(struct cache_ext_list *list)
 {
 	struct cache_ext_list_node *node, *tmp;
 	list_for_each_entry_safe(node, tmp, &list->head, node) {
 		list_del(&node->node);
-		cache_ext_list_node_free(node);
 	}
 	kfree(list);
 	return 0;
@@ -211,7 +223,7 @@ int bpf_cache_ext_list_del(struct folio *folio)
 };
 
 int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
-			       int (iter_fn)(u64 list, struct cache_ext_list_node *node, struct page_cache_ext_eviction_ctx *ctx),
+			       int (iter_fn)(int idx, struct cache_ext_list_node *node),
 			       struct page_cache_ext_eviction_ctx *ctx)
 {
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
@@ -228,6 +240,10 @@ BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_SET8_END(cache_ext_list_ops)
+
+noinline bool cache_ext_is_callback_calling_kfunc(u32 btf_id) {
+	return btf_id == cache_ext_list_ops.pairs[3].id;
+}
 
 static const struct btf_kfunc_id_set cache_ext_kfunc_set_list_ops = {
 	.owner = THIS_MODULE,
@@ -384,6 +400,12 @@ static int __init register_cache_ext_kfuncs(void)
 		     &cache_ext_kfunc_set_registry_ops))) {
 		pr_err("cache_ext: failed to register kfunc sets (%d)\n", ret);
 		return ret;
+	}
+	pr_info("version string lalakis1\n");
+
+	pr_info("BTF IDs:\n");
+	for (int i = 0; i < cache_ext_list_ops.cnt; i++) {
+		pr_info("%d: %d\n", i, cache_ext_list_ops.pairs[i].id);
 	}
 	return 0;
 }

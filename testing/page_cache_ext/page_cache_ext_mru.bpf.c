@@ -15,21 +15,33 @@ char _license[] SEC("license") = "GPL";
 	SEC("struct_ops.s/" #name)              \
 	BPF_PROG(name, ##args)
 
-#define DEBUG
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+
+// #define DEBUG
 #ifdef DEBUG
 #define dbg_printk(fmt, ...) bpf_printk(fmt, ##__VA_ARGS__)
 #else
 #define dbg_printk(fmt, ...)
 #endif
 
+/* Test inode */
+__u64 TEST_INODE_INO = -1;
+
+inline bool is_test_inode(struct folio *folio)
+{
+	if (folio->mapping == NULL) {
+		return false;
+	}
+	if (folio->mapping->host == NULL) {
+		return false;
+	}
+	return folio->mapping->host->i_ino == TEST_INODE_INO;
+}
+
 /*
  * Maps
  */
-
-// Map to store the linked list pointer
-// Single key-value
-// This is not working. Maybe we need to register destructors for cache_ext_list?
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -49,6 +61,8 @@ inline u64 get_mru_list()
 	return *mru_list;
 }
 
+// SEC("struct_ops.s/mru_init")
+// s32 mru_init(struct mem_cgroup *memcg)
 s32 BPF_STRUCT_OPS_SLEEPABLE(mru_init, struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_init hook! :D\n");
@@ -66,6 +80,9 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(mru_init, struct mem_cgroup *memcg)
 void BPF_STRUCT_OPS(mru_folio_added, struct folio *folio)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_folio_added hook! :D\n");
+	if (!is_test_inode(folio)) {
+		return;
+	}
 	u64 mru_list = get_mru_list();
 	if (mru_list == 0) {
 		bpf_printk("page_cache_ext: Failed to get mru_list\n");
@@ -76,7 +93,7 @@ void BPF_STRUCT_OPS(mru_folio_added, struct folio *folio)
 		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
 		return;
 	}
-	bpf_printk("page_cache_ext: Added folio to mru_list\n");
+	dbg_printk("page_cache_ext: Added folio to mru_list\n");
 }
 
 void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
@@ -84,6 +101,10 @@ void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
 	int ret;
 	u64 mru_list;
 	dbg_printk("page_cache_ext: Hi from the mru_folio_accessed hook! :D\n");
+
+	if (!is_test_inode(folio)) {
+		return;
+	}
 
 	ret = bpf_cache_ext_list_del(folio);
 	if (ret != 0) {
@@ -101,7 +122,7 @@ void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
 		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
 		return;
 	}
-	bpf_printk("page_cache_ext: Moved folio to mru_list tail\n");
+	dbg_printk("page_cache_ext: Moved folio to mru_list tail\n");
 }
 
 void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
@@ -116,20 +137,24 @@ void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
 	bpf_cache_ext_list_del(folio);
 }
 
-static int iterate_mru(u64 list, struct cache_ext_list_node *node,
-		       struct page_cache_ext_eviction_ctx *ctx)
+static int iterate_mru(int idx, struct cache_ext_list_node *node)
 {
-	if (ctx->request_nr_folios_to_evict - ctx->nr_folios_to_evict <= 0) {
-		return CACHE_EXT_STOP_ITER;
-	}
-	ctx->folios_to_evict[ctx->nr_folios_to_evict - 1] = node->folio;
-	ctx->nr_folios_to_evict++;
-	return 0;
+	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
+	if (idx < 30) return CACHE_EXT_CONTINUE_ITER;
+	return CACHE_EXT_EVICT_NODE;
+	// return CACHE_EXT_STOP_ITER;
+	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
+	// if (idx < 30) return 0;
+	// ctx->folios_to_evict[0] = node->folio;
+	// ctx->nr_folios_to_evict = 1;
+	// return CACHE_EXT_STOP_ITER;
 }
 
-void BPF_STRUCT_OPS(mru_evict_folios,
-		    struct page_cache_ext_eviction_ctx *eviction_ctx,
-		    struct mem_cgroup *memcg)
+// SEC("struct_ops/mru_evict_folios")
+// void mru_evict_folios(struct page_cache_ext_eviction_ctx *eviction_ctx,
+// 		      struct mem_cgroup *memcg)
+void BPF_STRUCT_OPS(mru_evict_folios, struct page_cache_ext_eviction_ctx *eviction_ctx,
+	       struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
 	u64 mru_list = get_mru_list();

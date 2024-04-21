@@ -6314,15 +6314,19 @@ static bool page_cache_ext_isolate_folio(struct folio *folio) {
 	struct lruvec *lruvec;
 
 	if (folio_test_unevictable(folio)) {
+		pr_debug("cache_ext: Failed to isolate because unevictable\n");
 		return false;
 	}
 
 	/* raced with release_pages() */
-	if (!folio_try_get(folio))
+	if (!folio_try_get(folio)){
+		pr_debug("cache_ext: Failed to isolate because try_get failed\n");
 		return false;
+	}
 
 	/* raced with another isolation */
 	if (!folio_test_clear_lru(folio)) {
+		pr_debug("cache_ext: Failed to isolate because clear_lru failed\n");
 		folio_put(folio);
 		return false;
 	}
@@ -6336,54 +6340,57 @@ static bool page_cache_ext_isolate_folio(struct folio *folio) {
 }
 
 static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
-	unsigned long nr_to_evict, struct page_cache_ext_ops *pcext_ops) {
+	long request_nr_to_evict, struct page_cache_ext_ops *pcext_ops) {
 
 	int ret = 0;
 	LIST_HEAD(free_folios);
 	unsigned long nr_reclaimed = 0, nr_reclaimed_for_batch = 0;
-	struct page_cache_ext_eviction_ctx *ctx = kzalloc(sizeof(struct page_cache_ext_eviction_ctx), GFP_KERNEL);
-	if (!ctx) {
-		pr_err("page_cache_ext: Failed to allocate page_cache_ext_eviction_ctx\n");
-		return 0;
-	}
-	pr_debug("page_cache_ext: Trying to evict %lu pages\n", nr_to_evict);
-	ctx->request_nr_folios_to_evict = nr_to_evict;
-	pcext_ops->evict_folios(ctx, lruvec_memcg(lruvec));
-	if (ctx->nr_folios_to_evict > ARRAY_SIZE(ctx->folios_to_evict)) {
-		pr_err("page_cache_ext: nr_folios_evicted bigger than array size!\n");
-		ret = 0;
-		goto free;
-	}
-	if (ctx->nr_folios_to_evict == 0) {
-		pr_err_ratelimited("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
-	}
-	if (ctx->nr_folios_to_evict != nr_to_evict) {
-		pr_debug("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
-			ctx->nr_folios_to_evict, nr_to_evict);
-	}
-	for (int i = 0; i < ctx->nr_folios_to_evict; i++) {
-		struct folio *untrusted_folio_ptr = ctx->folios_to_evict[i];
-		if (!valid_folios_exists(lruvec_to_valid_folios_set(lruvec), untrusted_folio_ptr)) {
-			pr_err("page_cache_ext: Folio not in valid_folios_set: %p!\n", untrusted_folio_ptr);
-			continue;
+	struct page_cache_ext_eviction_ctx ctx;
+	pr_debug("page_cache_ext: Trying to evict %lu pages\n", request_nr_to_evict);
+	for (long request_nr_to_evict_batch = min((long)32, request_nr_to_evict);
+	     request_nr_to_evict > 0;
+		 request_nr_to_evict -= 32) {
+
+		memset(&ctx, 0, sizeof(ctx));
+		ctx.request_nr_folios_to_evict = request_nr_to_evict_batch;
+		pcext_ops->evict_folios(&ctx, lruvec_memcg(lruvec));
+		if (ctx.nr_folios_to_evict > ARRAY_SIZE(ctx.folios_to_evict)) {
+			pr_debug("page_cache_ext: nr_folios_evicted bigger than array size!\n");
+			ret = 0;
+			goto free;
 		}
-		// Isolate page
-		if (!page_cache_ext_isolate_folio(untrusted_folio_ptr)) {
-			pr_err("page_cache_ext: Failed to isolate folio: %p\n", untrusted_folio_ptr);
-			continue;
+		if (ctx.nr_folios_to_evict == 0) {
+			pr_debug_ratelimited("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
 		}
-		// Free isolated folios
-		list_add(&untrusted_folio_ptr->lru, &free_folios);
+		if (ctx.nr_folios_to_evict != request_nr_to_evict_batch) {
+			pr_debug("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
+				ctx.nr_folios_to_evict, request_nr_to_evict_batch);
+		}
+		for (int i = 0; i < ctx.nr_folios_to_evict; i++) {
+			struct folio *untrusted_folio_ptr = ctx.folios_to_evict[i];
+			if (!valid_folios_exists_unlocked(lruvec_to_valid_folios_set(lruvec), untrusted_folio_ptr)) {
+				pr_debug("page_cache_ext: Folio not in valid_folios_set: %p!\n", untrusted_folio_ptr);
+				continue;
+			}
+			// Isolate page
+			if (!page_cache_ext_isolate_folio(untrusted_folio_ptr)) {
+				pr_debug("page_cache_ext: Failed to isolate folio: %p\n", untrusted_folio_ptr);
+				continue;
+			}
+			// Free isolated folios
+			list_add(&untrusted_folio_ptr->lru, &free_folios);
+		}
 		// TODO: Repurposing this damon function for now. Is it enough?
 		nr_reclaimed_for_batch = reclaim_pages(&free_folios);
-		if (nr_reclaimed_for_batch != ctx->nr_folios_to_evict) {
-			pr_err("page_cache_ext: nr_reclaimed(%lu) != nr_to_evict(%lu)!\n", nr_reclaimed_for_batch, ctx->nr_folios_to_evict);
+		if (nr_reclaimed_for_batch != ctx.nr_folios_to_evict) {
+			pr_debug("page_cache_ext: nr_reclaimed(%lu) != request_nr_to_evict(%lu)!\n", nr_reclaimed_for_batch, ctx.nr_folios_to_evict);
 		}
 		nr_reclaimed += nr_reclaimed_for_batch;
 	}
+
+	pr_debug("page_cache_ext: Reclaimed %lu pages\n", nr_reclaimed);
 	// TODO: Add some watchdog mechanism. If the hook is not performing adequetely, skip it.
 free:
-	kfree(ctx);
 	return nr_reclaimed;
 }
 
