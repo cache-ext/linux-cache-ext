@@ -157,6 +157,7 @@ void BPF_STRUCT_OPS(mru_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	       struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
+	bpf_printk("page_cache_ext: Evicting pages!\n");
 	u64 mru_list = get_mru_list();
 	if (mru_list == 0) {
 		bpf_printk(

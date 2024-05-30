@@ -25,6 +25,11 @@
  * Copyright (C) 2020 Alibaba, Inc, Alex Shi
  */
 
+#include "linux/math.h"
+#include "linux/mm.h"
+#include "linux/nodemask.h"
+#include "linux/string.h"
+#include "linux/vmalloc.h"
 #include <linux/types.h>
 #include <linux/page_counter.h>
 #include <linux/memcontrol.h>
@@ -368,7 +373,7 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
 
 inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
-	if (memcg && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
+	if (memcg && memcg->cache_ext_enabled && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
 		return READ_ONCE(page_cache_ext_ops);
 	}
 	return NULL;
@@ -429,13 +434,21 @@ spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_foli
 	return &valid_folios_set->bucket_locks[bkt];
 }
 
-struct valid_folios_set* init_valid_folios_set(int node) {
+struct valid_folios_set* init_valid_folios_set(int node, uint64_t num_buckets) {
+	struct sysinfo sysinfo;
+	si_meminfo(&sysinfo);
+	uint64_t total_memory_in_bytes = sysinfo.totalram * sysinfo.mem_unit;
+	uint64_t total_memory_in_mbytes = total_memory_in_bytes / (1024*1024);
+	pr_info("cache_ext: Cgroup sees available memory: %llu B (%llu MB)\n",
+		total_memory_in_bytes, total_memory_in_mbytes);
 	struct valid_folios_set *valid_folios_set;
-	valid_folios_set = kmalloc_node(sizeof(struct valid_folios_set), GFP_KERNEL, node);
+	valid_folios_set = vmalloc_node(sizeof(struct valid_folios_set), node);
 	if (!valid_folios_set) {
-		pr_err("Failed to allocate valid folios set\n");
+		pr_err("cache_ext: Failed to allocate valid folios set\n");
 		return NULL;
 	}
+	atomic64_set(&valid_folios_set->nr_entries, 0);
+
 	hash_init(valid_folios_set->valid_folios);
 	for (int i = 0; i < VALID_FOLIOS_SET_SIZE; i++) {
 		spin_lock_init(&valid_folios_set->bucket_locks[i]);
@@ -5601,14 +5614,36 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 
 	lruvec_init(&pn->lruvec);
 	pn->memcg = memcg;
-	pn->valid_folios_set = init_valid_folios_set(node);
-	if (!pn->valid_folios_set) {
-		pr_crit("Failed to allocate valid folios set for node %d\n", node);
-		return 1;
-	}
-	cache_ext_ds_registry_init(&pn->cache_ext_ds_registry);
-
+	pn->valid_folios_set = NULL;
 	memcg->nodeinfo[node] = pn;
+	return 0;
+}
+
+static int add_cache_ext_structures(struct mem_cgroup *memcg) {
+	int node;
+	struct mem_cgroup_per_node *pn;
+
+	if (unlikely(memcg->css.cgroup == NULL)) {
+		pr_err("cache_ext: memcg css is NULL\n");
+		return -1;
+	}
+
+	for_each_node(node) {
+		pn = memcg->nodeinfo[node];
+		// Get memory size for the node
+		struct sysinfo si;
+		si_meminfo(&si);
+		uint64_t memory_in_bytes  = si.totalram * si.mem_unit;
+		uint64_t max_num_pages = memory_in_bytes / PAGE_SIZE;
+		uint64_t num_buckets = roundup_pow_of_two(max_num_pages);
+		pr_info("cache_ext: Creating cache ext structures for node %d, num_buckets = %lu\n", node, num_buckets);
+		pn->valid_folios_set = init_valid_folios_set(node, num_buckets);
+		if (pn->valid_folios_set == NULL) {
+			pr_err("cache_ext: Failed to initialize valid folios set for node %d\n", node);
+			return -1;
+		}
+		cache_ext_ds_registry_init(&pn->cache_ext_ds_registry);
+	}
 	return 0;
 }
 
@@ -5620,7 +5655,13 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 		return;
 
 	free_percpu(pn->lruvec_stats_percpu);
-	free_valid_folios_set(pn->valid_folios_set);
+	if (memcg->cache_ext_enabled) {
+		if (pn->valid_folios_set == NULL) {
+			pr_err("cache_ext: valid_folios_set is NULL but cgroup is cache_ext_enabled\n");
+		} else {
+			free_valid_folios_set(pn->valid_folios_set);
+		}
+	}
 	kfree(pn);
 }
 
@@ -5758,6 +5799,28 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	char name[PATH_MAX];
+	int ret;
+	if (memcg->css.cgroup == NULL) {
+		pr_err("cache_ext: Cgroup has no css.cgroup\n");
+		return -1;
+	}
+
+	ret = cgroup_name(memcg->css.cgroup, name, PATH_MAX);
+	if (ret < 0) {
+		pr_err("mem_cgroup_css_online: Failed to get cgroup name\n");
+		return -1;
+	}
+	if (str_has_prefix(name, "cache_ext")) {
+		pr_info("cache_ext: Cgroup %s is a cache_ext cgroup\n", name);
+		ret = add_cache_ext_structures(memcg);
+		if (ret < 0) {
+			pr_err("cache_ext: Failed to add cache ext structures for cgroup %s\n", name);
+			return -1;
+		}
+		memcg->cache_ext_enabled = true;
+	}
 
 	if (memcg_online_kmem(memcg))
 		goto remove_id;

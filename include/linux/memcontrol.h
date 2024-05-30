@@ -10,6 +10,7 @@
 
 #ifndef _LINUX_MEMCONTROL_H
 #define _LINUX_MEMCONTROL_H
+#include "linux/types.h"
 #include <linux/cgroup.h>
 #include <linux/vm_event_item.h>
 #include <linux/hardirq.h>
@@ -77,7 +78,7 @@ struct mem_cgroup_reclaim_cookie {
  * Value: Nothing, we just want to check for existence.
  */
 
-#define VALID_FOLIOS_SET_SIZE_POW 11
+#define VALID_FOLIOS_SET_SIZE_POW 22
 #define VALID_FOLIOS_SET_SIZE (1 << VALID_FOLIOS_SET_SIZE_POW)
 
 struct valid_folios_set {
@@ -94,7 +95,7 @@ struct valid_folio {
 
 
 // Function definitions for the valid_folios_set
-struct valid_folios_set* init_valid_folios_set(int node);
+struct valid_folios_set* init_valid_folios_set(int node, uint64_t num_buckets);
 void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
 void valid_folios_add(struct folio *folio);
 void valid_folios_del(struct folio *folio);
@@ -385,6 +386,8 @@ struct mem_cgroup {
 	/* per-memcg mm_struct list */
 	struct lru_gen_mm_list mm_list;
 #endif
+
+	bool cache_ext_enabled;
 
 	struct mem_cgroup_per_node *nodeinfo[];
 };

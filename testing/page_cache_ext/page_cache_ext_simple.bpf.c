@@ -9,6 +9,7 @@ char _license[] SEC("license") = "GPL";
 	SEC("struct_ops/" #name)      \
 	BPF_PROG(name, args)
 
+#define DEBUG
 #ifdef DEBUG
 #define dbg_printk(fmt, ...) bpf_printk(fmt, ##__VA_ARGS__)
 #else

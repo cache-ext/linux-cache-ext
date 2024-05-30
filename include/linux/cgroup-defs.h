@@ -524,7 +524,6 @@ struct cgroup {
 #ifdef CONFIG_BPF_SYSCALL
 	struct bpf_local_storage __rcu  *bpf_cgrp_storage;
 #endif
-
 	/* All ancestors including self */
 	struct cgroup *ancestors[];
 };
