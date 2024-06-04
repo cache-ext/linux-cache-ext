@@ -56,6 +56,11 @@ DEFINE_EVENT(mm_filemap_op_page_cache, mm_filemap_add_to_page_cache,
 	TP_ARGS(folio)
 	);
 
+DEFINE_EVENT(mm_filemap_op_page_cache, mm_filemap_add_to_page_cache_prefetch,
+	TP_PROTO(struct folio *folio),
+	TP_ARGS(folio)
+	);
+
 TRACE_EVENT(filemap_set_wb_err,
 		TP_PROTO(struct address_space *mapping, errseq_t eseq),
 
