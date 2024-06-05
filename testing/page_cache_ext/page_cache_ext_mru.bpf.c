@@ -117,7 +117,7 @@ void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
 		bpf_printk("page_cache_ext: Failed to get mru_list\n");
 		return;
 	}
-	ret = bpf_cache_ext_list_add_tail(mru_list, folio);
+	ret = bpf_cache_ext_list_add(mru_list, folio);
 	if (ret != 0) {
 		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
 		return;
