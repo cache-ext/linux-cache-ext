@@ -54,6 +54,11 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 			       int(iter_fn)(int idx,
 					    struct cache_ext_list_node *node),
 			       struct page_cache_ext_eviction_ctx *ctx);
+int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
+			      bool(less_fn)(struct cache_ext_list_node *a,
+				  		struct cache_ext_list_node *b),
+				  __u32 sample_size, __u32 select_size,
+				  struct page_cache_ext_eviction_ctx *ctx);
 u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
 
 /*

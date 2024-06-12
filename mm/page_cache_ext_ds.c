@@ -10,6 +10,7 @@
 #include <linux/bpf.h>
 #include <linux/cache_ext.h>
 #include <linux/btf.h>
+#include <linux/sort.h>
 
 /******************************************************************************
  * Linked List ****************************************************************
@@ -166,9 +167,11 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 			ret = 0;
 			break;
 		} else if (ret == CACHE_EXT_EVICT_NODE) {
-			ctx->folios_to_evict[ctx->nr_folios_to_evict] = node->folio;
+			ctx->folios_to_evict[ctx->nr_folios_to_evict] =
+				node->folio;
 			ctx->nr_folios_to_evict++;
-			if (ctx->nr_folios_to_evict == ARRAY_SIZE(ctx->folios_to_evict)-1) {
+			if (ctx->nr_folios_to_evict ==
+			    ARRAY_SIZE(ctx->folios_to_evict) - 1) {
 				ret = CACHE_EXT_EVICT_ARRAY_FILLED;
 				break;
 			}
@@ -223,7 +226,8 @@ int bpf_cache_ext_list_del(struct folio *folio)
 };
 
 int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
-			       int (iter_fn)(int idx, struct cache_ext_list_node *node),
+			       int(iter_fn)(int idx,
+					    struct cache_ext_list_node *node),
 			       struct page_cache_ext_eviction_ctx *ctx)
 {
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
@@ -234,14 +238,65 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
 };
 
+int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
+			      bool(less_fn)(struct cache_ext_list_node *a,
+					   struct cache_ext_list_node *b),
+			      __u32 sample_size, __u32 select_size,
+				  struct page_cache_ext_eviction_ctx *ctx)
+{
+	if (sample_size < select_size) {
+		pr_err("cache_ext: sample_size < select_size\n");
+		return -1;
+	}
+	if (select_size > ctx->request_nr_folios_to_evict) {
+		pr_warn("cache_ext: select_size > request_nr_folios_to_evict\n");
+		select_size = ctx->request_nr_folios_to_evict;
+	}
+	struct cache_ext_ds_registry *registry =
+		cache_ext_ds_registry_from_memcg(memcg);
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(registry, list);
+	if (!list_ptr) {
+		return -1;
+	}
+	read_lock(&registry->lock);
+	// 1. Copy to sample array
+	struct cache_ext_list_node *sample_array[400];
+	if (sample_size > ARRAY_SIZE(sample_array)) {
+		pr_err("cache_ext: sample_size > ARRAY_SIZE(sample_array)\n");
+		read_unlock(&registry->lock);
+		return -1;
+	}
+	for (int i = 0; i < sample_size; i++) {
+		struct cache_ext_list_node *node;
+		list_for_each_entry(node, &list_ptr->head, node) {
+			sample_array[i] = node;
+		}
+	}
+	// 2. Sort the sample array
+	sort(sample_array, sample_size, sizeof(struct cache_ext_list_node *),
+	    	(int (*)(const void *, const void *))less_fn, NULL);
+
+	// 3. Select the first select_size elements
+	for (int i = 0; i < select_size; i++) {
+		ctx->folios_to_evict[ctx->nr_folios_to_evict] =
+			sample_array[i]->folio;
+		ctx->nr_folios_to_evict++;
+	}
+
+	read_unlock(&registry->lock);
+	return 0;
+}
+
 BTF_SET8_START(cache_ext_list_ops)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
 BTF_SET8_END(cache_ext_list_ops)
 
-noinline bool cache_ext_is_callback_calling_kfunc(u32 btf_id) {
+noinline bool cache_ext_is_callback_calling_kfunc(u32 btf_id)
+{
 	return btf_id == cache_ext_list_ops.pairs[3].id;
 }
 

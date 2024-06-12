@@ -66,7 +66,7 @@ def main():
     # Open the file and read it start to end in a loop
     with open("testfile", "rb") as f:
         # fadvise random
-        # os.posix_fadvise(f.fileno(), 0, 0, os.POSIX_FADV_RANDOM)
+        os.posix_fadvise(f.fileno(), 0, 0, os.POSIX_FADV_RANDOM)
         # Read in 4k increments, use read system call
         if args.iterations == -1:
             while True:

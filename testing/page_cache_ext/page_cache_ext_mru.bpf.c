@@ -3,7 +3,7 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-#include "page_cache_ext_mru.bpf.h"
+#include "cache_ext_lib.bpf.h"
 
 char _license[] SEC("license") = "GPL";
 
@@ -139,8 +139,16 @@ void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
 
 static int iterate_mru(int idx, struct cache_ext_list_node *node)
 {
+	// TODO: Implement the folio_mark_uptodate function to make sure the folios
+	// are valid to be evicted.
+	// TODO: Also check the PG_lru flag.
+
 	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
-	if (idx < 30) return CACHE_EXT_CONTINUE_ITER;
+	if (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))
+		bpf_printk("cache_ext: Iterate idx %d\n", idx);
+	if ((idx < 30) && (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))) {
+		return CACHE_EXT_CONTINUE_ITER;
+	}
 	return CACHE_EXT_EVICT_NODE;
 	// return CACHE_EXT_STOP_ITER;
 	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
@@ -156,8 +164,8 @@ static int iterate_mru(int idx, struct cache_ext_list_node *node)
 void BPF_STRUCT_OPS(mru_evict_folios, struct page_cache_ext_eviction_ctx *eviction_ctx,
 	       struct mem_cgroup *memcg)
 {
-	dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
-	bpf_printk("page_cache_ext: Evicting pages!\n");
+	// dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
+	// bpf_printk("page_cache_ext: Evicting pages!\n");
 	u64 mru_list = get_mru_list();
 	if (mru_list == 0) {
 		bpf_printk(

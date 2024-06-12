@@ -6363,7 +6363,7 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 			pr_debug_ratelimited("page_cache_ext: No pages to evict, nr_folios_to_evict == 0!\n");
 		}
 		if (ctx.nr_folios_to_evict != request_nr_to_evict_batch) {
-			pr_debug("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_evictionn(%lu)!\n",
+			pr_debug("page_cache_ext: nr_folios_returned_for_eviction(%lu) != nr_folios_requested_for_eviction(%lu)!\n",
 				ctx.nr_folios_to_evict, request_nr_to_evict_batch);
 		}
 		for (int i = 0; i < ctx.nr_folios_to_evict; i++) {
