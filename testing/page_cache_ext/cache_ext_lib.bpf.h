@@ -21,7 +21,7 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      bool(less_fn)(struct cache_ext_list_node *a,
 				  		struct cache_ext_list_node *b),
-				  __u32 sample_size, __u32 select_size,
+				  struct sampling_options *opts,
 				  struct page_cache_ext_eviction_ctx *ctx) __ksym;
 u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg) __ksym;
 

@@ -32,14 +32,21 @@ char _license[] SEC("license") = "GPL";
 
 struct folio_metadata {
 	u64 accesses;
-}
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, int);
+	__type(value, struct folio_metadata);
+	__uint(max_entries, 1048576);
+} folio_metadata_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, int);
-	__type(value, struct folio_metadata);
-	__uint(max_entries, MAX_PAGES);
-} folio_metadata_map SEC(".maps");
+	__type(key, u32);
+	__type(value, u64);
+	__uint(max_entries, 1);
+} sampling_list_map SEC(".maps");
 
 /* Counter for list size */
 __u64 list_size = 0;
@@ -57,18 +64,6 @@ inline bool is_test_inode(struct folio *folio)
 	}
 	return folio->mapping->host->i_ino == TEST_INODE_INO;
 }
-
-/*
- * Maps
- */
-
-// Maps from folio to metadata
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u64);
-	__type(value, u64);
-	__uint(max_entries, 1);
-} sampling_list_map SEC(".maps");
 
 inline u64 get_sampling_list()
 {
@@ -111,7 +106,6 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	}
 	int ret = 0;
 	// Add the folio to the head with probability 1 / (list_size + 1)
-
 	u32 die_roll =
 		bpf_get_random(1, __sync_fetch_and_add(&list_size, 0) + 1);
 	if (die_roll == 1) {
@@ -126,24 +120,36 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	}
 	__sync_fetch_and_add(&list_size, 1);
 	dbg_printk("page_cache_ext: Added folio to sampling_list\n");
+
+	// Create folio metadata
+	u64 key = (u64)folio;
+	struct folio_metadata new_meta = { 0 };
+	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
 
 void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 {
 	// TODO: Update folio metadata with other values we want to track
-    struct folio_metadata *meta;
-    u64 key = (u64)folio;
-    meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
-    if (!meta) {
-        struct folio_metadata new_meta = {0};
-        bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
-        meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
-        if (!meta) {
-            bpf_printk("page_cache_ext: Failed to update folio metadata\n");
-            return;
-        }
-    }
-    __sync_fetch_and_add(&meta->accesses, 1);
+	struct folio_metadata *meta;
+	u64 key = (u64)folio;
+	meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
+	if (!meta) {
+		struct folio_metadata new_meta = { 0 };
+		int ret = bpf_map_update_elem(&folio_metadata_map, &key,
+					      &new_meta, BPF_ANY);
+		if (ret != 0) {
+			bpf_printk(
+				"page_cache_ext: Failed to create folio metadata in accessed. Return value: %d\n",
+				ret);
+			return;
+		}
+		meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
+		if (meta == NULL) {
+			// bpf_printk("page_cache_ext: Failed to create folio metadata in accessed\n");
+			return;
+		}
+	}
+	__sync_fetch_and_add(&meta->accesses, 1);
 }
 
 void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
@@ -159,41 +165,46 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 	bpf_cache_ext_list_del(folio);
 	__sync_fetch_and_add(&list_size, -1);
 	u64 key = (u64)folio;
-    bpf_map_delete_elem(&folio_metadata_map, &key);
+	bpf_map_delete_elem(&folio_metadata_map, &key);
 }
 
-static bool bpf_less_fn(struct cache_ext_list_node *a, struct cache_ext_list_node *b) {
-    struct folio_metadata *meta_a;
-    struct folio_metadata *meta_b;
-    u64 key_a = (u64)a->folio;
-    u64 key_b = (u64)b->folio;
-    meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
-    meta_b = bpf_map_lookup_elem(&folio_metadata_map, &key_b);
-    if (!meta_a || !meta_b) {
-        return 0;
-    }
-    return meta_a->accesses < meta_b->accesses;
+static bool bpf_less_fn(struct cache_ext_list_node *a,
+			struct cache_ext_list_node *b)
+{
+	struct folio_metadata *meta_a;
+	struct folio_metadata *meta_b;
+	u64 key_a = (u64)a->folio;
+	u64 key_b = (u64)b->folio;
+	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
+	meta_b = bpf_map_lookup_elem(&folio_metadata_map, &key_b);
+	if (!meta_a || !meta_b) {
+		return 0;
+	}
+	return meta_a->accesses < meta_b->accesses;
 }
 
 void BPF_STRUCT_OPS(sampling_evict_folios,
 		    struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
 {
-	dbg_printk("page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
+	dbg_printk(
+		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
 	u64 sampling_list = get_sampling_list();
 	if (sampling_list == 0) {
 		bpf_printk(
 			"page_cache_ext: Failed to get sampling_list on eviction path\n");
 		return;
 	}
-    // TODO: What does the eviction interface look like for sampling?
-    bpf_cache_ext_list_sample(
-        memcg,
-        sampling_list,
-        bpf_less_fn,
-        eviction_ctx->request_nr_folios_to_evict * 10,
-        eviction_ctx->request_nr_folios_to_evict,
-        eviction_ctx);
+	// TODO: What does the eviction interface look like for sampling?
+	struct sampling_options sampling_opts = {
+		.select_size = eviction_ctx->request_nr_folios_to_evict,
+		.sample_size = 5 * eviction_ctx->request_nr_folios_to_evict,
+	};
+	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_less_fn,
+				  &sampling_opts, eviction_ctx);
+	bpf_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
+		   eviction_ctx->nr_folios_to_evict,
+		   eviction_ctx->request_nr_folios_to_evict);
 }
 
 SEC(".struct_ops.link")

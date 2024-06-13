@@ -241,9 +241,13 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      bool(less_fn)(struct cache_ext_list_node *a,
 					   struct cache_ext_list_node *b),
-			      __u32 sample_size, __u32 select_size,
+			      struct sampling_options *opts,
 				  struct page_cache_ext_eviction_ctx *ctx)
 {
+	// Select the first select_size elements with the lowest score out of
+	// sample_size elements in the given list.
+	__u32 sample_size = opts->sample_size;
+	__u32 select_size = opts->select_size;
 	if (sample_size < select_size) {
 		pr_err("cache_ext: sample_size < select_size\n");
 		return -1;
@@ -259,6 +263,11 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		return -1;
 	}
 	read_lock(&registry->lock);
+	if (list_empty(&list_ptr->head)) {
+		pr_warn("cache_ext: list is empty\n");
+		read_unlock(&registry->lock);
+		return 0;
+	}
 	// 1. Copy to sample array
 	struct cache_ext_list_node *sample_array[400];
 	if (sample_size > ARRAY_SIZE(sample_array)) {
@@ -266,11 +275,15 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		read_unlock(&registry->lock);
 		return -1;
 	}
-	for (int i = 0; i < sample_size; i++) {
-		struct cache_ext_list_node *node;
-		list_for_each_entry(node, &list_ptr->head, node) {
-			sample_array[i] = node;
-		}
+	int sample_array_size = 0;
+	struct cache_ext_list_node *list_node;
+	list_for_each_entry(list_node, &list_ptr->head, node) {
+		sample_array[sample_array_size] = list_node;
+		sample_array_size++;
+	}
+	if (sample_array_size < sample_size) {
+		sample_size = sample_array_size;
+		select_size = min(select_size, sample_size);
 	}
 	// 2. Sort the sample array
 	sort(sample_array, sample_size, sizeof(struct cache_ext_list_node *),
@@ -295,9 +308,14 @@ BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
 BTF_SET8_END(cache_ext_list_ops)
 
-noinline bool cache_ext_is_callback_calling_kfunc(u32 btf_id)
+noinline bool cache_ext_is_callback_calling_kfunc_iterate(u32 btf_id)
 {
-	return btf_id == cache_ext_list_ops.pairs[3].id;
+	return (btf_id == cache_ext_list_ops.pairs[3].id) ;
+}
+
+noinline bool cache_ext_is_callback_calling_kfunc_sample(u32 btf_id)
+{
+	return (btf_id == cache_ext_list_ops.pairs[4].id);
 }
 
 static const struct btf_kfunc_id_set cache_ext_kfunc_set_list_ops = {

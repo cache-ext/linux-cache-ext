@@ -9266,6 +9266,43 @@ static int set_cache_ext_list_iterate_callback_state(
 	return 0;
 }
 
+static int set_cache_ext_list_sample_callback_state(
+	struct bpf_verifier_env *env,
+	struct bpf_func_state *caller,
+	struct bpf_func_state *callee,
+	int insn_idx)
+{
+	/*
+	 * int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
+						bool(less_fn)(struct cache_ext_list_node *a,
+							struct cache_ext_list_node *b),
+						struct sampling_options *opts,
+						struct page_cache_ext_eviction_ctx *ctx)
+	 */
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_0]);
+
+	// Set node pointer
+	callee->regs[BPF_REG_1].type = PTR_TO_BTF_ID;
+	__mark_reg_known_zero(&callee->regs[BPF_REG_1]);
+	callee->regs[BPF_REG_1].btf =  btf_vmlinux;
+	callee->regs[BPF_REG_1].btf_id = btf_tracing_ids[BTF_TRACING_TYPE_CACHE_EXT_LIST_NODE];
+
+	// Set node pointer
+	callee->regs[BPF_REG_2].type = PTR_TO_BTF_ID;
+	__mark_reg_known_zero(&callee->regs[BPF_REG_2]);
+	callee->regs[BPF_REG_2].btf =  btf_vmlinux;
+	callee->regs[BPF_REG_2].btf_id = btf_tracing_ids[BTF_TRACING_TYPE_CACHE_EXT_LIST_NODE];
+
+	/* unused */
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_3]);
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_4]);
+	__mark_reg_not_init(env, &callee->regs[BPF_REG_5]);
+
+	callee->in_callback_fn = true;
+	callee->callback_ret_range = tnum_range(0, 2);
+	return 0;
+}
+
 static bool is_rbtree_lock_required_kfunc(u32 btf_id);
 
 /* Are we currently verifying the callback for a rbtree helper that must
@@ -10681,11 +10718,9 @@ static bool is_bpf_graph_api_kfunc(u32 btf_id)
 
 static bool is_callback_calling_kfunc(u32 btf_id)
 {
-	pr_info_ratelimited("verifier: in is_callback_calling_kfunc\n");
-	if (cache_ext_is_callback_calling_kfunc(btf_id)) {
-		pr_info("verifier: got iterator fn\n");
-	}
-	return btf_id == special_kfunc_list[KF_bpf_rbtree_add_impl] || cache_ext_is_callback_calling_kfunc(btf_id);
+	return (btf_id == special_kfunc_list[KF_bpf_rbtree_add_impl] ||
+		    cache_ext_is_callback_calling_kfunc_iterate(btf_id) ||
+			cache_ext_is_callback_calling_kfunc_sample(btf_id));
 }
 
 static bool is_rbtree_lock_required_kfunc(u32 btf_id)
@@ -11466,9 +11501,17 @@ static int check_kfunc_call(struct bpf_verifier_env *env, struct bpf_insn *insn,
 				func_name, meta.func_id);
 			return err;
 		}
-	} else if (cache_ext_is_callback_calling_kfunc(meta.func_id)) {
+	} else if (cache_ext_is_callback_calling_kfunc_iterate(meta.func_id)) {
 		err = __check_func_call(env, insn, insn_idx_p, meta.subprogno,
 					set_cache_ext_list_iterate_callback_state);
+		if (err) {
+			verbose(env, "kfunc %s#%d failed callback verification\n",
+				func_name, meta.func_id);
+			return err;
+		}
+	} else if (cache_ext_is_callback_calling_kfunc_sample(meta.func_id)) {
+		err = __check_func_call(env, insn, insn_idx_p, meta.subprogno,
+					set_cache_ext_list_sample_callback_state);
 		if (err) {
 			verbose(env, "kfunc %s#%d failed callback verification\n",
 				func_name, meta.func_id);
