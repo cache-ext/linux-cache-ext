@@ -280,13 +280,16 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	list_for_each_entry(list_node, &list_ptr->head, node) {
 		sample_array[sample_array_size] = list_node;
 		sample_array_size++;
+		if (sample_array_size >= sample_size) {
+			break;
+		}
 	}
 	if (sample_array_size < sample_size) {
 		sample_size = sample_array_size;
 		select_size = min(select_size, sample_size);
 	}
 	// 2. Sort the sample array
-	sort(sample_array, sample_size, sizeof(struct cache_ext_list_node *),
+	sort(sample_array, sample_array_size, sizeof(struct cache_ext_list_node *),
 	    	(int (*)(const void *, const void *))less_fn, NULL);
 
 	// 3. Select the first select_size elements

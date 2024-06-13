@@ -32,6 +32,7 @@ char _license[] SEC("license") = "GPL";
 
 struct folio_metadata {
 	u64 accesses;
+	u64 last_access_time;
 };
 
 struct {
@@ -124,11 +125,15 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	// Create folio metadata
 	u64 key = (u64)folio;
 	struct folio_metadata new_meta = { 0 };
+	new_meta.last_access_time = bpf_ktime_get_ns();
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
 
 void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 {
+	if (!is_test_inode(folio)) {
+		return;
+	}
 	// TODO: Update folio metadata with other values we want to track
 	struct folio_metadata *meta;
 	u64 key = (u64)folio;
@@ -145,23 +150,18 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 		}
 		meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
 		if (meta == NULL) {
-			// bpf_printk("page_cache_ext: Failed to create folio metadata in accessed\n");
+			bpf_printk("page_cache_ext: Failed to get created folio metadata in accessed\n");
 			return;
 		}
 	}
 	__sync_fetch_and_add(&meta->accesses, 1);
+	meta->last_access_time = bpf_ktime_get_ns();
 }
 
 void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 {
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_folio_evicted hook! :D\n");
-	u64 sampling_list = get_sampling_list();
-	if (sampling_list == 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to get sampling_list on evicted path\n");
-		return;
-	}
 	bpf_cache_ext_list_del(folio);
 	__sync_fetch_and_add(&list_size, -1);
 	u64 key = (u64)folio;
@@ -180,7 +180,8 @@ static bool bpf_less_fn(struct cache_ext_list_node *a,
 	if (!meta_a || !meta_b) {
 		return 0;
 	}
-	return meta_a->accesses < meta_b->accesses;
+	// Simulate MRU
+	return meta_a->last_access_time > meta_b->last_access_time;
 }
 
 void BPF_STRUCT_OPS(sampling_evict_folios,
@@ -202,9 +203,9 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_less_fn,
 				  &sampling_opts, eviction_ctx);
-	bpf_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
-		   eviction_ctx->nr_folios_to_evict,
-		   eviction_ctx->request_nr_folios_to_evict);
+	dbg_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
+			   eviction_ctx->nr_folios_to_evict,
+			   eviction_ctx->request_nr_folios_to_evict);
 }
 
 SEC(".struct_ops.link")
