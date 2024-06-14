@@ -83,7 +83,7 @@ static inline u32 bpf_get_random(u32 min, u32 max) {
 		min = max;
 		max = temp;
 	}
-	return min + bpf_get_prandom_u32() % (max - min + 1);
+	return min + (bpf_get_prandom_u32() % (max - min + 1));
 }
 
 #endif /* _CACHE_EXT_LIB_BPF_H */

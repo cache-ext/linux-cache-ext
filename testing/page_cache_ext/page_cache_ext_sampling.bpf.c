@@ -199,7 +199,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
 		.select_size = eviction_ctx->request_nr_folios_to_evict,
-		.sample_size = 5 * eviction_ctx->request_nr_folios_to_evict,
+		.sample_size = 10 * eviction_ctx->request_nr_folios_to_evict,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_less_fn,
 				  &sampling_opts, eviction_ctx);

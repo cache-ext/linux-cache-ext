@@ -262,17 +262,17 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	if (!list_ptr) {
 		return -1;
 	}
-	read_lock(&registry->lock);
+	write_lock(&registry->lock);
 	if (list_empty(&list_ptr->head)) {
 		pr_warn("cache_ext: list is empty\n");
-		read_unlock(&registry->lock);
+		write_unlock(&registry->lock);
 		return 0;
 	}
 	// 1. Copy to sample array
 	struct cache_ext_list_node *sample_array[400];
 	if (sample_size > ARRAY_SIZE(sample_array)) {
 		pr_err("cache_ext: sample_size > ARRAY_SIZE(sample_array)\n");
-		read_unlock(&registry->lock);
+		write_unlock(&registry->lock);
 		return -1;
 	}
 	int sample_array_size = 0;
@@ -299,7 +299,12 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		ctx->nr_folios_to_evict++;
 	}
 
-	read_unlock(&registry->lock);
+	// 4. Put the rest to the back
+	for (int i = select_size; i < sample_size; i++) {
+		list_move_tail(&sample_array[i]->node, &list_ptr->head);
+	}
+
+	write_unlock(&registry->lock);
 	return 0;
 }
 
