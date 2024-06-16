@@ -2,6 +2,7 @@
  * BPF-Exposed data structures for page_cache_ext.
  */
 
+#include "linux/types.h"
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
@@ -268,26 +269,35 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		write_unlock(&registry->lock);
 		return 0;
 	}
-	// 1. Copy to sample array
-	struct cache_ext_list_node *sample_array[400];
-	if (sample_size > ARRAY_SIZE(sample_array)) {
-		pr_err("cache_ext: sample_size > ARRAY_SIZE(sample_array)\n");
-		write_unlock(&registry->lock);
-		return -1;
-	}
-	int sample_array_size = 0;
+	// Optimization: Snip the front of the list and select the pages without
+	// holding the lock.
+	// TODO: Get a reference to the page here and drop it after adding it back.
+	LIST_HEAD(snipped_list);
 	struct cache_ext_list_node *list_node;
-	list_for_each_entry(list_node, &list_ptr->head, node) {
-		sample_array[sample_array_size] = list_node;
-		sample_array_size++;
-		if (sample_array_size >= sample_size) {
+	int sample_array_size = 0;
+
+	while (sample_array_size < sample_size) {
+		if (list_empty(&list_ptr->head)) {
 			break;
 		}
+		list_node = list_first_entry(&list_ptr->head,
+					     struct cache_ext_list_node, node);
+		list_move(&list_node->node, &snipped_list);
+		sample_array_size++;
 	}
+	write_unlock(&registry->lock);
 	if (sample_array_size < sample_size) {
 		sample_size = sample_array_size;
 		select_size = min(select_size, sample_size);
 	}
+
+	// 1. Copy to sample array
+	struct cache_ext_list_node *sample_array[640];
+	int sample_array_idx = 0;
+	list_for_each_entry(list_node, &snipped_list, node) {
+		sample_array[sample_array_idx++] = list_node;
+	}
+
 	// 2. Sort the sample array
 	sort(sample_array, sample_array_size, sizeof(struct cache_ext_list_node *),
 	    	(int (*)(const void *, const void *))less_fn, NULL);
@@ -299,10 +309,9 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		ctx->nr_folios_to_evict++;
 	}
 
-	// 4. Put the rest to the back
-	for (int i = select_size; i < sample_size; i++) {
-		list_move_tail(&sample_array[i]->node, &list_ptr->head);
-	}
+	// 4. Put selected to the front and the rest to the back
+	write_lock(&registry->lock);
+	list_splice_tail(&snipped_list, &list_ptr->head);
 
 	write_unlock(&registry->lock);
 	return 0;

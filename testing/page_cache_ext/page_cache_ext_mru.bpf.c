@@ -145,7 +145,7 @@ static int iterate_mru(int idx, struct cache_ext_list_node *node)
 
 	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
 	if (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))
-		bpf_printk("cache_ext: Iterate idx %d\n", idx);
+		// bpf_printk("cache_ext: Iterate idx %d\n", idx);
 	if ((idx < 30) && (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))) {
 		return CACHE_EXT_CONTINUE_ITER;
 	}
