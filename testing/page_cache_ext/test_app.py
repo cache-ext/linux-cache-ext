@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 import random
 import logging
 import argparse
@@ -72,8 +73,13 @@ def main():
             while True:
                 iterate_test_file_once(f)
         else:
-            for _ in range(args.iterations):
+            for iter in range(args.iterations):
+                print("Iteration: ", iter)
+                start_time = time.time()
                 iterate_test_file_once(f)
+                end_time = time.time()
+                duration = end_time - start_time
+                print("Iteration took: %.2f seconds" % duration)
 
 if __name__ == "__main__":
     sys.exit(main())

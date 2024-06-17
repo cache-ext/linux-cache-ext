@@ -1,0 +1,25 @@
+// file: io_operations.bt
+// Description: Tracks I/O operations and total time spent in I/O per PID and operation type.
+
+tracepoint:block:block_rq_issue {
+  // Store the start time using a composite key of device, sector, and PID
+  @start[args->dev, args->sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/{
+  // Determine operation type using strncmp
+  $op_type = strncmp(args->rwbs, "R", 1) == 0 ? "Read" : "Write";
+  // Calculate latency
+  $latency = nsecs - @start[args->dev, args->sector];
+  // Sum up latencies and count I/Os based on PID and operation type
+  @[$op_type, "Count"] += 1;
+  @[$op_type, "Time"] += $latency;
+  // Clean up the start time entry
+  delete(@start[args->dev, args->sector]);
+}
+
+// Print the final results when the script exits
+END {
+  printf("Final I/O Operations and Total Time per PID:\n");
+  print(@); // Only printing the aggregated results
+}
