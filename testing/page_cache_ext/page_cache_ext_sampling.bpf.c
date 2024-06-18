@@ -31,13 +31,13 @@ char _license[] SEC("license") = "GPL";
 #define MAX_PAGES (1 << 20)
 
 struct folio_metadata {
-	u64 accesses;
+	// u64 accesses;
 	u64 last_access_time;
 };
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, int);
+	__type(key, __u64);
 	__type(value, struct folio_metadata);
 	__uint(max_entries, 1048576);
 } folio_metadata_map SEC(".maps");
@@ -48,6 +48,14 @@ struct {
 	__type(value, u64);
 	__uint(max_entries, 1);
 } sampling_list_map SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__type(key, u32);
+	__type(value, u64);
+	__uint(max_entries, 1);
+} is_first_eviction SEC(".maps");
+
 
 /* Counter for list size */
 __u64 list_size = 0;
@@ -154,7 +162,7 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 			return;
 		}
 	}
-	__sync_fetch_and_add(&meta->accesses, 1);
+	// __sync_fetch_and_add(&meta->accesses, 1);
 	meta->last_access_time = bpf_ktime_get_ns();
 }
 
@@ -178,9 +186,14 @@ static bool bpf_less_fn(struct cache_ext_list_node *a,
 	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
 	meta_b = bpf_map_lookup_elem(&folio_metadata_map, &key_b);
 	if (!meta_a || !meta_b) {
+		bpf_printk("page_cache_ext: Failed to get metadata\n")
 		return 0;
 	}
 	// Simulate MRU
+	if (meta_a->last_access_time == 0 || meta_b->last_access_time == 0) {
+		bpf_printk("page_cache_ext: Invalid last_access_time\n");
+	}
+
 	return meta_a->last_access_time > meta_b->last_access_time;
 }
 
@@ -188,6 +201,13 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 		    struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
 {
+	int zero = 0, one = 1;
+	u64 *first_eviction = bpf_map_lookup_elem(&is_first_eviction, &zero);
+	if (first_eviction == NULL || *first_eviction == 0) {
+		bpf_map_update_elem(&is_first_eviction, &zero, &one, BPF_ANY);
+		bpf_printk("page_cache_ext: First eviction, list size is %llu\n",
+			   __sync_fetch_and_add(&list_size, 0));
+	}
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
 	u64 sampling_list = get_sampling_list();

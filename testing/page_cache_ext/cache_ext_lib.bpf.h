@@ -83,7 +83,10 @@ static inline u32 bpf_get_random(u32 min, u32 max) {
 		min = max;
 		max = temp;
 	}
-	return min + (bpf_get_prandom_u32() % (max - min + 1));
+	u32 res = min + (bpf_get_prandom_u32() % (max - min + 1));
+	if ((res < min) || (res > max)) {
+		bpf_printk("page_cache_ext: Random number out of bounds: %u, min: %u, max: %u\n", res, min, max);
+	}
 }
 
 #endif /* _CACHE_EXT_LIB_BPF_H */
