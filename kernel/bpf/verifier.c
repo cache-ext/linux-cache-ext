@@ -9274,8 +9274,7 @@ static int set_cache_ext_list_sample_callback_state(
 {
 	/*
 	 * int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
-						bool(less_fn)(struct cache_ext_list_node *a,
-							struct cache_ext_list_node *b),
+						s64(score_fn)(struct cache_ext_list_node *a),
 						struct sampling_options *opts,
 						struct page_cache_ext_eviction_ctx *ctx)
 	 */
@@ -9287,19 +9286,13 @@ static int set_cache_ext_list_sample_callback_state(
 	callee->regs[BPF_REG_1].btf =  btf_vmlinux;
 	callee->regs[BPF_REG_1].btf_id = btf_tracing_ids[BTF_TRACING_TYPE_CACHE_EXT_LIST_NODE];
 
-	// Set node pointer
-	callee->regs[BPF_REG_2].type = PTR_TO_BTF_ID;
-	__mark_reg_known_zero(&callee->regs[BPF_REG_2]);
-	callee->regs[BPF_REG_2].btf =  btf_vmlinux;
-	callee->regs[BPF_REG_2].btf_id = btf_tracing_ids[BTF_TRACING_TYPE_CACHE_EXT_LIST_NODE];
-
 	/* unused */
 	__mark_reg_not_init(env, &callee->regs[BPF_REG_3]);
 	__mark_reg_not_init(env, &callee->regs[BPF_REG_4]);
 	__mark_reg_not_init(env, &callee->regs[BPF_REG_5]);
 
 	callee->in_callback_fn = true;
-	callee->callback_ret_range = tnum_range(0, 2);
+	callee->callback_ret_range = tnum_range(S64_MIN, S64_MAX);
 	return 0;
 }
 

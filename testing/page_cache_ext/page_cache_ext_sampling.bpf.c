@@ -176,25 +176,21 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 	bpf_map_delete_elem(&folio_metadata_map, &key);
 }
 
-static bool bpf_less_fn(struct cache_ext_list_node *a,
-			struct cache_ext_list_node *b)
+static s64 bpf_mru_score_fn(struct cache_ext_list_node *a)
 {
 	struct folio_metadata *meta_a;
-	struct folio_metadata *meta_b;
 	u64 key_a = (u64)a->folio;
-	u64 key_b = (u64)b->folio;
 	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
-	meta_b = bpf_map_lookup_elem(&folio_metadata_map, &key_b);
-	if (!meta_a || !meta_b) {
-		bpf_printk("page_cache_ext: Failed to get metadata\n")
+	if (!meta_a) {
+		bpf_printk("page_cache_ext: Failed to get metadata\n");
 		return 0;
 	}
 	// Simulate MRU
-	if (meta_a->last_access_time == 0 || meta_b->last_access_time == 0) {
+	if (meta_a->last_access_time == 0) {
 		bpf_printk("page_cache_ext: Invalid last_access_time\n");
 	}
 
-	return meta_a->last_access_time > meta_b->last_access_time;
+	return -1 * meta_a->last_access_time;
 }
 
 void BPF_STRUCT_OPS(sampling_evict_folios,
@@ -218,14 +214,18 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.select_size = eviction_ctx->request_nr_folios_to_evict,
-		.sample_size = 10 * eviction_ctx->request_nr_folios_to_evict,
+		.sample_size = 4,
 	};
-	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_less_fn,
+	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_mru_score_fn,
 				  &sampling_opts, eviction_ctx);
 	dbg_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
 			   eviction_ctx->nr_folios_to_evict,
 			   eviction_ctx->request_nr_folios_to_evict);
+	dbg_printk("page_cache_ext: Printing first two and last two folios: %p %p %p %p\n",
+			   eviction_ctx->folios_to_evict[0],
+			   eviction_ctx->folios_to_evict[1],
+			   eviction_ctx->folios_to_evict[32 - 2],
+			   eviction_ctx->folios_to_evict[32 - 1]);
 }
 
 SEC(".struct_ops.link")

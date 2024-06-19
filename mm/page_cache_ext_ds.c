@@ -240,27 +240,19 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 };
 
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
-			      bool(less_fn)(struct cache_ext_list_node *a,
-					   struct cache_ext_list_node *b),
+			      s64(score_fn)(struct cache_ext_list_node *a),
 			      struct sampling_options *opts,
 				  struct page_cache_ext_eviction_ctx *ctx)
 {
 	// Select the first select_size elements with the lowest score out of
 	// sample_size elements in the given list.
 	__u32 sample_size = opts->sample_size;
-	__u32 select_size = opts->select_size;
-	if (sample_size < select_size) {
-		pr_err("cache_ext: sample_size < select_size\n");
-		return -1;
-	}
-	if (select_size > ctx->request_nr_folios_to_evict) {
-		pr_warn("cache_ext: select_size > request_nr_folios_to_evict\n");
-		select_size = ctx->request_nr_folios_to_evict;
-	}
+
 	struct cache_ext_ds_registry *registry =
 		cache_ext_ds_registry_from_memcg(memcg);
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(registry, list);
 	if (!list_ptr) {
+		pr_err("cache_ext: list is NULL\n");
 		return -1;
 	}
 	write_lock(&registry->lock);
@@ -274,42 +266,60 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	// TODO: Get a reference to the page here and drop it after adding it back.
 	LIST_HEAD(snipped_list);
 	struct cache_ext_list_node *list_node;
-	int sample_array_size = 0;
+	int snipped_list_size = 0;
+	int desired_snipped_list_size = sample_size * ctx->request_nr_folios_to_evict;
 
-	while (sample_array_size < sample_size) {
+	while (snipped_list_size < desired_snipped_list_size) {
 		if (list_empty(&list_ptr->head)) {
 			break;
 		}
 		list_node = list_first_entry(&list_ptr->head,
 					     struct cache_ext_list_node, node);
 		list_move(&list_node->node, &snipped_list);
-		sample_array_size++;
+		snipped_list_size++;
+	}
+	if (snipped_list_size < desired_snipped_list_size) {
+		pr_err("cache_ext: Not enough elements in the list. List has %d but want %lu\n",
+			snipped_list_size, desired_snipped_list_size);
+		list_splice(&snipped_list, &list_ptr->head);
+		write_unlock(&registry->lock);
+		return -1;
 	}
 	write_unlock(&registry->lock);
-	if (sample_array_size < sample_size) {
-		sample_size = sample_array_size;
-		select_size = min(select_size, sample_size);
-	}
-
-	// 1. Copy to sample array
-	struct cache_ext_list_node *sample_array[640];
-	int sample_array_idx = 0;
-	list_for_each_entry(list_node, &snipped_list, node) {
-		sample_array[sample_array_idx++] = list_node;
-	}
-
-	// 2. Sort the sample array
-	sort(sample_array, sample_array_size, sizeof(struct cache_ext_list_node *),
-	    	(int (*)(const void *, const void *))less_fn, NULL);
-
-	// 3. Select the first select_size elements
-	for (int i = 0; i < select_size; i++) {
-		ctx->folios_to_evict[ctx->nr_folios_to_evict] =
-			sample_array[i]->folio;
+	// 1. For every n elements, evict the one with the min score
+	int select_every_nth = sample_size;
+	ctx->nr_folios_to_evict = 0;
+	struct cache_ext_list_node *curr_node = list_first_entry(
+		&snipped_list, struct cache_ext_list_node, node);
+	for (int i = 0; i < ctx->request_nr_folios_to_evict; i++) {
+		struct cache_ext_list_node *min_node = NULL;
+		s64 min_score;
+		for (int j = 0; j < select_every_nth; j++) {
+			if (curr_node == NULL) {
+				pr_warn("cache_ext: curr_node is NULL, ran out of folios to evict\n");
+				break;
+			}
+			if (j == 0) {
+				min_node = curr_node;
+				min_score = score_fn(curr_node);
+				continue;
+			}
+			s64 curr_score = score_fn(curr_node);
+			if (curr_score < min_score) {
+				min_score = curr_score;
+				min_node = curr_node;
+			}
+			curr_node = list_next_entry(curr_node, node);
+		}
+		if (min_node == NULL) {
+			pr_warn("cache_ext: min_node is NULL, ran out of folios to evict\n");
+			break;
+		}
+		ctx->folios_to_evict[ctx->nr_folios_to_evict] = min_node->folio;
 		ctx->nr_folios_to_evict++;
 	}
 
-	// 4. Put selected to the front and the rest to the back
+	// 2. Put everything to the back of the list.
 	write_lock(&registry->lock);
 	list_splice_tail(&snipped_list, &list_ptr->head);
 
