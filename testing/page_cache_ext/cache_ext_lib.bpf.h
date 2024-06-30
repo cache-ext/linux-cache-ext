@@ -1,6 +1,10 @@
 #ifndef _CACHE_EXT_LIB_BPF_H
 #define _CACHE_EXT_LIB_BPF_H 1
 
+#define U32_MAX		((u32)~0U)
+#define U64_MAX		((u64)~0ULL)
+#define S64_MAX		((s64)(U64_MAX >> 1))
+
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
@@ -74,18 +78,32 @@ static inline bool folio_test_lru(struct folio *folio)
 // Generic Utils //////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-static inline u32 bpf_get_random(u32 min, u32 max) {
-	// TODO: This has modulo bias, not sure if we should address it.
-	u32 temp;
-	if (min > max) {
-		temp = min;
-		min = max;
-		max = temp;
+// Generate a random number in [0, max).
+static inline u32 bpf_get_random_unbiased(u32 max) {
+	// XXX: Address modulo bias.
+	if (max == 0) {
+		return 0;
 	}
-	u32 res = min + (bpf_get_prandom_u32() % (max - min + 1));
-	if ((res < min) || (res > max)) {
-		bpf_printk("page_cache_ext: Random number out of bounds: %u, min: %u, max: %u\n", res, min, max);
+	u32 max_divisible = U32_MAX - (U32_MAX % max);
+	u32 max_retries = 10;
+	u32 res;
+	for (int i = 0; i < max_retries; i++) {
+		res = bpf_get_prandom_u32();
+		if (res < max_divisible) {
+			return res % max;
+		}
 	}
+	bpf_printk("bpf_get_random: max_retries reached\n");
+	return res % max;
+}
+
+// Generate a random number in [0, max).
+static inline u32 bpf_get_random_biased(u32 max) {
+	// XXX: Address modulo bias.
+	if (max == 0) {
+		return 0;
+	}
+	return bpf_get_prandom_u32() % max;
 }
 
 #endif /* _CACHE_EXT_LIB_BPF_H */

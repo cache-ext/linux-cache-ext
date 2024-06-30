@@ -2847,7 +2847,7 @@ unsigned long reclaim_pages(struct list_head *folio_list)
 	return nr_reclaimed;
 }
 
-static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
+static noinline unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 				 struct lruvec *lruvec, struct scan_control *sc)
 {
 	if (is_active_lru(lru)) {
@@ -6394,7 +6394,7 @@ free:
 	return nr_reclaimed;
 }
 
-static unsigned long page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec, unsigned long nr_to_evict) {
+static noinline unsigned long page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec, unsigned long nr_to_evict) {
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
 	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
 	if (pcext_ops != NULL && pcext_ops->evict_folios != NULL) {
@@ -6447,8 +6447,9 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	/*
 	 * Page cache extension
 	 */
-	unsigned long nr_to_evict = min(nr[LRU_INACTIVE_FILE], SWAP_CLUSTER_MAX);
+	unsigned long nr_to_evict = nr[LRU_INACTIVE_FILE];
 	nr_reclaimed += page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict);
+	nr[LRU_INACTIVE_FILE] -= nr_reclaimed;
 	/***********************************************************************/
 
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||

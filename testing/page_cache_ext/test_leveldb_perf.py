@@ -158,37 +158,49 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
     return results
 
 
+def disable_smt():
+    run(["sudo", "sh", "-c", "echo off > /sys/devices/system/cpu/smt/control"])
+
+
 def main():
     bench_binary_dir = "/mydata/My-YCSB/build"
 
     create_cache_ext_cgroup()
     create_baseline_cgroup()
     disable_swap()
+    disable_smt()
 
     all_results = []
     results_file = "results.json"
     if os.path.exists(results_file):
         all_results = load_json(results_file)
 
-    num_iterations = 5
-    for cgroup in ["cache_ext_test", "baseline_test"]:
-        for i in range(num_iterations):
-            log.info("Running iteration %d with cgroup %s", i, cgroup)
-            # Reset the environment
-            reset_database()
-            drop_page_cache()
-            # Run the benchmark
-            cmd = ["time", "sudo", "cgexec", "-g", "memory:%s" % cgroup,
-                   "./run_leveldb", "../leveldb/config/ycsb_a.yaml"]
-            out = subprocess.check_output(cmd, cwd=bench_binary_dir, text=True)
-            bench_results = parse_leveldb_bench_results(out)
-            all_results.append({
-                "cgroup": cgroup,
-                "run_id": uuid.uuid4().hex,
-                "results": bench_results
-            })
-            # Save results
-            save_json(results_file, all_results)
+    num_iterations = 6
+    for enable_mmap in [False]:
+        for cgroup in ["cache_ext_test", "baseline_test"]:
+            for i in range(num_iterations):
+                log.info("Running iteration %d with cgroup %s", i, cgroup)
+                # Reset the environment
+                reset_database()
+                drop_page_cache()
+                # Run the benchmark
+                cmd_env = os.environ.copy()
+                if enable_mmap:
+                    cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
+                cmd = ["taskset", "-c", "0-4",
+                       "sudo", "cgexec", "-g", "memory:%s" % cgroup,
+                       "./run_leveldb", "../leveldb/config/ycsb_a.yaml"]
+                out = subprocess.check_output(cmd, cwd=bench_binary_dir,
+                                              text=True, env=cmd_env)
+                bench_results = parse_leveldb_bench_results(out)
+                all_results.append({
+                    "enable_mmap": enable_mmap,
+                    "cgroup": cgroup,
+                    "run_id": uuid.uuid4().hex,
+                    "results": bench_results
+                })
+                # Save results
+                save_json(results_file, all_results)
 
 
 if __name__ == "__main__":
