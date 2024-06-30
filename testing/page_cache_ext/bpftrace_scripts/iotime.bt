@@ -7,6 +7,10 @@ tracepoint:block:block_rq_issue {
 }
 
 tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/{
+  // Check if PID is 0 and return
+  if (pid != 0) {
+    return;
+  }
   // Determine operation type using strncmp
   $op_type = strncmp(args->rwbs, "R", 1) == 0 ? "Read" : "Write";
   // Calculate latency
@@ -22,4 +26,6 @@ tracepoint:block:block_rq_complete /@start[args->dev, args->sector]/{
 END {
   printf("Final I/O Operations and Total Time per PID:\n");
   print(@); // Only printing the aggregated results
+  clear(@start);
+  clear(@);
 }

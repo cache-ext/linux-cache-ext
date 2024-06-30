@@ -45,16 +45,10 @@ tracepoint:vmscan:mm_vmscan_memcg_reclaim_end /@start_mr[tid]/
 
 tracepoint:vmscan:mm_vmscan_wakeup_kswapd { @count_wk++; }
 
-
-BEGIN
+END
 {
 	printf("%-10s %10s %12s %12s %6s %9s\n", "TIME",
 	    "S-SLABms", "D-RECLAIMms", "M-RECLAIMms", "KSWAPD", "WRITEPAGE");
-
-}
-
-END
-{
 	time("%H:%M:%S");
 	printf("   %10d %12d %12d %6d\n",
 	    @sum_ss/1000000, @sum_dr/1000000, @sum_mr/1000000,

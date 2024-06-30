@@ -56,7 +56,7 @@ The current architecture is the following:
 1. Run application with 1.2GB working set.
 
     ```sh
-    sudo cgexec -g memory:cache_ext_test ./test_app.py
+    time sudo cgexec -g memory:cache_ext_test ./test_app.py --iterations 4
     ```
 
 ### Teardown
@@ -64,3 +64,35 @@ The current architecture is the following:
 1. Unload the extension framework BPF hooks in the kernel.
 1. Disable `page_cache_ext` for cgroup.
 1. Destroy cgroup.
+
+
+### Comparative test with baseline cgroup
+
+1. Create a new memory cgroup with 1GB limit for the demo.
+
+    ```sh
+    sudo cgcreate -g memory:baseline_test
+    sudo sh -c 'echo 1073741824 > /sys/fs/cgroup/baseline_test/memory.max'
+    ```
+
+## Test LevelDB
+
+1. Create a new memory cgroup with 5GB limit for the demo.
+
+    ```sh
+    sudo cgcreate -g memory:cache_ext_test
+    sudo sh -c 'echo 2147483648 > /sys/fs/cgroup/cache_ext_test/memory.max'
+    ```
+
+1. Enable `page_cache_ext` for the new cgroup.
+
+    ```sh
+    echo -n "/cache_ext_test" > /proc/page_cache_ext_enabled_cgroup
+    ```
+
+1. Run LevelDB:
+
+    ```sh
+    cd /mydata/My-YCSB/build
+    sudo cgexec -g memory:cache_ext_test ./run_leveldb ../leveldb/config/ycsb_a.yaml
+    ```

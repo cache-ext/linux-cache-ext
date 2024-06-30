@@ -282,13 +282,11 @@ void page_cache_ext_enabled_cgroup_init(void) {
 
 struct mem_cgroup *page_cache_ext_get_enabled_memcg(void) {
 	struct mem_cgroup *memcg;
-	read_lock(&page_cache_ext_enabled_cgroup.lock);
-	if (page_cache_ext_enabled_cgroup.cgroup == NULL) {
-		read_unlock(&page_cache_ext_enabled_cgroup.lock);
+	struct cgroup *cgroup = READ_ONCE(page_cache_ext_enabled_cgroup.cgroup);
+	if (!cgroup) {
 		return NULL;
 	}
 	memcg = mem_cgroup_from_css(page_cache_ext_enabled_cgroup.cgroup->subsys[memory_cgrp_id]);
-	read_unlock(&page_cache_ext_enabled_cgroup.lock);
 	return memcg;
 }
 
@@ -371,7 +369,7 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
     .proc_write = procfile_page_cache_ext_enabled_cgroup_write,
 };
 
-inline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
+noinline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
 	if (memcg && memcg->cache_ext_enabled && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
 		return READ_ONCE(page_cache_ext_ops);
@@ -466,7 +464,7 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set) {
 		hash_del(&cur->h_node);
 		kfree(cur);
 	}
-	kfree(valid_folios_set);
+	vfree(valid_folios_set);
 }
 
 void valid_folios_add(struct folio *folio) {
@@ -5636,7 +5634,7 @@ static int add_cache_ext_structures(struct mem_cgroup *memcg) {
 		uint64_t memory_in_bytes  = si.totalram * si.mem_unit;
 		uint64_t max_num_pages = memory_in_bytes / PAGE_SIZE;
 		uint64_t num_buckets = roundup_pow_of_two(max_num_pages);
-		pr_info("cache_ext: Creating cache ext structures for node %d, num_buckets = %lu\n", node, num_buckets);
+		pr_info("cache_ext: Creating cache ext structures for node %d, num_buckets = %llu\n", node, num_buckets);
 		pn->valid_folios_set = init_valid_folios_set(node, num_buckets);
 		if (pn->valid_folios_set == NULL) {
 			pr_err("cache_ext: Failed to initialize valid folios set for node %d\n", node);

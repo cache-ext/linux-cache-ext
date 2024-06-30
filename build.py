@@ -19,9 +19,14 @@ def parse_args():
     build_parser = subparsers.add_parser("build", help="Build the kernel")
     build_parser.add_argument("--debug", action="store_true",
                               help="Enable debug mode for build")
+    build_parser.add_argument("--no-clang", action="store_true", default=False,
+                              help="Use clang as the compiler")
     install_parser = subparsers.add_parser("install", help="Install the kernel")
     install_parser.add_argument("--debug", action="store_true",
                                 help="Enable debug mode for installation")
+    install_parser.add_argument("--no-clang", action="store_true", default=False,
+                                help="Use clang as the compiler")
+
     return parser.parse_args()
 
 
@@ -35,6 +40,13 @@ def edit_config_file(config_options: Dict[str, str], path=".config"):
             run(["./scripts/config", "-d", config_opt])
         else:
             raise ValueError(f"Invalid action {action} for config option {config_opt}")
+
+
+def add_default_config_options():
+    config_options = {
+        "CONFIG_RANDOMIZE_BASE": "n",
+    }
+    edit_config_file(config_options)
 
 
 def add_debug_config_options():
@@ -73,23 +85,28 @@ def main():
     global log
     logging.basicConfig(level=logging.INFO)
     args = parse_args()
-    llvm_envvars = {
-        "LLVM": "1",
-        "CC": "ccache clang",
-        "KBUILD_BUILD_TIMESTAMP": "",
-    }
+    if not args.no_clang:
+        llvm_envvars = {
+            "LLVM": "1",
+            "CC": "ccache clang",
+            "KBUILD_BUILD_TIMESTAMP": "",
+        }
+    else:
+        llvm_envvars = {}
     llvm_env = os.environ.copy()
     llvm_env.update(llvm_envvars)
 
 
     if args.command == "build":
         log.info("Building the kernel")
+        add_default_config_options()
         if args.debug:
             add_debug_config_options()
         make(env=llvm_env)
         run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
     elif args.command == "install":
         log.info("Installing the kernel")
+        add_default_config_options()
         if args.debug:
             add_debug_config_options()
         make(env=llvm_env)
