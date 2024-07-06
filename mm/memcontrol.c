@@ -440,7 +440,8 @@ struct valid_folios_set* init_valid_folios_set(int node, uint64_t num_buckets) {
 	pr_info("cache_ext: Cgroup sees available memory: %llu B (%llu MB)\n",
 		total_memory_in_bytes, total_memory_in_mbytes);
 	struct valid_folios_set *valid_folios_set;
-	valid_folios_set = vmalloc_node(sizeof(struct valid_folios_set), node);
+	// TODO: Change to vmalloc_node
+	valid_folios_set = vmalloc_huge(sizeof(struct valid_folios_set), GFP_KERNEL | __GFP_ZERO);
 	if (!valid_folios_set) {
 		pr_err("cache_ext: Failed to allocate valid folios set\n");
 		return NULL;
@@ -515,8 +516,8 @@ void valid_folios_del(struct folio *folio) {
 			if (!list_empty(&cur->cache_ext_node->node)) {
 				list_del(&cur->cache_ext_node->node);
 			}
-			cache_ext_list_node_free(cur->cache_ext_node);
 			cache_ext_ds_registry_write_unlock(folio);
+			cache_ext_list_node_free(cur->cache_ext_node);
 
 			kfree(cur);
 			spin_unlock(bucket_lock);

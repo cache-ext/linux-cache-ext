@@ -56,3 +56,9 @@ dkms.conf
 
 # testfile
 testfile
+
+# perf
+perf.data*
+
+# traces
+*.dat

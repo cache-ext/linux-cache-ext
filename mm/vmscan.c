@@ -2571,7 +2571,7 @@ static int current_may_throttle(void)
  * shrink_inactive_list() is a helper for shrink_node().  It returns the number
  * of reclaimed pages
  */
-static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
+static noinline unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 		struct lruvec *lruvec, struct scan_control *sc,
 		enum lru_list lru)
 {

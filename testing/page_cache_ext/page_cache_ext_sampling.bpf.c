@@ -4,6 +4,7 @@
 #include <bpf/bpf_core_read.h>
 
 #include "cache_ext_lib.bpf.h"
+#include "dir_watcher.bpf.h"
 
 char _license[] SEC("license") = "GPL";
 
@@ -31,7 +32,7 @@ char _license[] SEC("license") = "GPL";
 #define MAX_PAGES (1 << 20)
 
 struct folio_metadata {
-	// u64 accesses;
+	u64 accesses;
 	u64 last_access_time;
 };
 
@@ -134,7 +135,7 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 
 	// Create folio metadata
 	u64 key = (u64)folio;
-	struct folio_metadata new_meta = { 0 };
+	struct folio_metadata new_meta = { .accesses = 1 };
 	new_meta.last_access_time = bpf_ktime_get_ns();
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
@@ -164,7 +165,7 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 			return;
 		}
 	}
-	// __sync_fetch_and_add(&meta->accesses, 1);
+	__sync_fetch_and_add(&meta->accesses, 1);
 	meta->last_access_time = bpf_ktime_get_ns();
 }
 
@@ -202,6 +203,18 @@ static s64 bpf_mru_score_fn(struct cache_ext_list_node *a)
 	return -1 * meta_a->last_access_time;
 }
 
+static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
+{
+	struct folio_metadata *meta_a;
+	u64 key_a = (u64)a->folio;
+	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
+	if (!meta_a) {
+		bpf_printk("page_cache_ext: Failed to get metadata\n");
+		return 0;
+	}
+	return meta_a->accesses;
+}
+
 void BPF_STRUCT_OPS(sampling_evict_folios,
 		    struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
@@ -223,9 +236,9 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.sample_size = 3,
+		.sample_size = 10,
 	};
-	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_mru_score_fn,
+	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);
 	dbg_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
 			   eviction_ctx->nr_folios_to_evict,

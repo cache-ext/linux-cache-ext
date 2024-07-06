@@ -5,6 +5,7 @@ import uuid
 import logging
 import subprocess
 
+from time import sleep
 from typing import Dict
 
 log = logging.getLogger(__name__)
@@ -68,15 +69,7 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
     # Uniform: calculating overall performance metrics... (might take a while)
     # Uniform overall: UPDATE throughput 0.00 ops/sec, INSERT throughput 0.00 ops/sec, READ throughput 9038.24 ops/sec, SCAN throughput 0.00 ops/sec, READ_MODIFY_WRITE throughput 0.00 ops/sec, total throughput 9038.24 ops/sec
     # Uniform overall: UPDATE average latency 0.00 ns, UPDATE p99 latency 0.00 ns, INSERT average latency 0.00 ns, INSERT p99 latency 0.00 ns, READ average latency 109658.84 ns, READ p99 latency 145190.65 ns, SCAN average latency 0.00 ns, SCAN p99 latency 0.00 ns, READ_MODIFY_WRITE average latency 0.00 ns, READ_MODIFY_WRITE p99 latency 0.00 ns
-    # Template:
-    # === RocksDB Stats Start ===
-    # rocksdb.block.cache.miss COUNT : 980
-    # rocksdb.block.cache.hit COUNT : 20
-    # rocksdb.block.cache.add COUNT : 980
-    #
-    # === RocksDB Stats End ===
     results = {}
-    results["keys_failed"] = 0
     for line in stdout.splitlines():
         line = line.strip()
         if "Warm-Up" in line:
@@ -158,9 +151,42 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
     return results
 
 
+class CacheExtPolicy:
+    def __init__(self, cgroup: str, loader_path: str):
+        self.cgroup_path = "/sys/fs/cgroup/%s" % cgroup
+        self.loader_path = loader_path
+        self.has_started = False
+        self._policy_thread = None
+
+    def start(self):
+        if self.has_started:
+            raise Exception("Policy already started")
+        self.has_started = True
+        cmd = ["sudo", self.loader_path]
+        self._policy_thread = subprocess.Popen(cmd,
+                                               stdout=subprocess.PIPE,
+                                               stderr=subprocess.PIPE)
+        sleep(2)
+        if self._policy_thread.poll() is not None:
+            raise Exception("Policy thread exited unexpectedly: %s" %
+                            self._policy_thread.stderr.read())
+
+    def stop(self):
+        if not self.has_started:
+            raise Exception("Policy not started")
+        cmd = ["sudo", "kill", "-2", str(self._policy_thread.pid)]
+        run(cmd)
+        out, err = self._policy_thread.communicate()
+        log.info("Policy thread stdout: %s", out)
+        log.info("Policy thread stderr: %s", err)
+        self.has_started = False
+
+
 def disable_smt():
     run(["sudo", "sh", "-c", "echo off > /sys/devices/system/cpu/smt/control"])
 
+
+CLEANUP_TASKS = []
 
 def main():
     bench_binary_dir = "/mydata/My-YCSB/build"
@@ -175,9 +201,17 @@ def main():
     if os.path.exists(results_file):
         all_results = load_json(results_file)
 
-    num_iterations = 6
+    policy_loader_binary = "./page_cache_ext_sampling.out"
+    if not os.path.exists(policy_loader_binary):
+        raise Exception("Policy loader binary not found: %s" %
+                        policy_loader_binary)
+    cache_ext_policy = CacheExtPolicy("cache_ext_test", policy_loader_binary)
+
+    # cache_ext_policy.start()
+    # CLEANUP_TASKS.append(lambda: cache_ext_policy.stop())
+    num_iterations = 3
     for enable_mmap in [False]:
-        for cgroup in ["cache_ext_test", "baseline_test"]:
+        for cgroup in ["cache_ext_test"]:
             for i in range(num_iterations):
                 log.info("Running iteration %d with cgroup %s", i, cgroup)
                 # Reset the environment
@@ -204,4 +238,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log.error("Error in main: %s", e)
+        log.info("Cleaning up")
+        for task in CLEANUP_TASKS:
+            task()
+        log.error("Re-raising exception")
+        raise e

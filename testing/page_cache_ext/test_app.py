@@ -57,6 +57,42 @@ END {
 }
 """
 
+
+class FuncTimeTracer:
+    def __init__(self):
+        self.stats = Stats()
+        self.process = None
+
+    def start(self):
+        if self.process:
+            raise Exception("Process already started")
+        cmd = ["sudo", "bpftrace", "-f", "json", "bpftrace_scripts/functime.bt"]
+        # Start command and capture stdout
+        self.process = Popen(cmd, stdout=PIPE, stderr=PIPE)
+
+    def stop(self) -> Stats:
+        # Stop the process
+        if not self.process:
+            raise Exception("Process not started")
+        cmd = ["sudo", "kill", "-2", str(self.process.pid)]
+        run(cmd, check=True)
+        out, err = self.process.communicate()
+        if err:
+            log.error("Error running bpftrace: %s", err)
+        lines = out.splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if obj["type"] != "map":
+                continue
+            func_name_to_nano = obj["data"]["@totalTime"]
+            for func_name, nano in func_name_to_nano.items():
+                print(f"Function: {func_name}, Time: {nano / 1e9} sec")
+        print(str(out, "utf-8"))
+
+
 class StatsTracer:
     """A simple class to trace the stats of the workload"""
     def __init__(self, pid: int):
@@ -159,9 +195,30 @@ def iterate_test_file_once_randomly(f, number_of_pages: int, seed=42):
         os.pread(f.fileno(), page_size, offset)
 
 
+def autodetect_mem_cgroup():
+    with open("/proc/self/cgroup", "r") as f:
+        lines = f.readlines()
+    lines = [l.strip() for l in lines if l.strip()]
+    return lines[0].split("/")[-1]
+
+
+def parse_cgroup_mem_stat(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    stats = {}
+    for line in lines:
+        key, value = line.strip().split()
+        stats[key] = int(value)
+    return stats
+
+
 def main():
     global log
     logging.basicConfig(level=logging.INFO)
+    cgroup = autodetect_mem_cgroup()
+    cgroup_mem_stat_file = f"/sys/fs/cgroup/{cgroup}/memory.stat"
+    cgroup_mem_stat = parse_cgroup_mem_stat(cgroup_mem_stat_file)
+    start_scan, start_reclaim = cgroup_mem_stat["pgscan_direct"], cgroup_mem_stat["pgsteal_direct"]
     args = parse_args()
     log.info("Creating test file of size %d bytes", args.workingset_size)
     if not test_file_exists(size_in_bytes=args.workingset_size):
@@ -180,7 +237,9 @@ def main():
             else:
                 if not args.no_stats:
                     tracer = StatsTracer(os.getpid())
+                    ftime_tracer = FuncTimeTracer()
                     tracer.start()
+                    ftime_tracer.start()
                 file_size = os.path.getsize("testfile")
                 page_size = 4 * KB
                 file_size_in_pages = int(file_size // page_size)
@@ -192,6 +251,7 @@ def main():
                     duration = end_time - start_time
                     print("Iteration took: %.2f seconds" % duration)
                 if not args.no_stats:
+                    ftime_tracer.stop()
                     stats = tracer.stop()
                     print("Stats: ")
                     print("Read time: %.1f sec, Write time: %d" %
@@ -208,9 +268,16 @@ def main():
         except KeyboardInterrupt:
             if not args.no_stats:
                 log.info("Exiting...")
+                ftime_tracer.stop()
                 tracer.stop()
                 raise
-
+    cgroup_mem_stat = parse_cgroup_mem_stat(cgroup_mem_stat_file)
+    end_scan, end_reclaim = cgroup_mem_stat["pgscan_direct"], cgroup_mem_stat["pgsteal_direct"]
+    scan_diff = end_scan - start_scan
+    reclaim_diff = end_reclaim - start_reclaim
+    reclaim_efficiency = (reclaim_diff / scan_diff) * 100
+    log.info("Scanned: %d pages, Reclaimed: %d pages", scan_diff, reclaim_diff)
+    log.info("Reclaim efficiency: %.2f%%", reclaim_efficiency)
 
 
 if __name__ == "__main__":

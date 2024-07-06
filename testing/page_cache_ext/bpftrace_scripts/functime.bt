@@ -2,33 +2,101 @@
 
 // Define maps for start times and total execution times
 BEGIN {
-    printf("Tracing function execution times for multiple functions...\n");
+    printf("Tracing function execution times for multiple functions...");
 }
 
-// Replace 'shrink_lruvec' and 'get_page_cache_ext_ops' with your target functions
+// Replace 'valid_folios_add' and 'valid_folios_del' with your target functions
+kprobe:valid_folios_add {
+    @start[pid, "valid_folios_add"] = nsecs;
+}
+
+kretprobe:valid_folios_add /@start[pid, "valid_folios_add"]/{
+    $duration = nsecs - @start[pid, "valid_folios_add"];
+    @totalTime["valid_folios_add"] = sum($duration);
+    delete(@start[pid, "valid_folios_add"]);
+}
+
+kprobe:valid_folios_del {
+    @start[pid, "valid_folios_del"] = nsecs;
+}
+
+kretprobe:valid_folios_del /@start[pid, "valid_folios_del"]/{
+    $duration = nsecs - @start[pid, "valid_folios_del"];
+    @totalTime["valid_folios_del"] = sum($duration);
+    delete(@start[pid, "valid_folios_del"]);
+}
+
+kprobe:delete_from_page_cache_batch {
+    @start[pid, "delete_from_page_cache_batch"] = nsecs;
+}
+
+kretprobe:delete_from_page_cache_batch /@start[pid, "delete_from_page_cache_batch"]/{
+    $start_time = @start[pid, "delete_from_page_cache_batch"];
+    $curr_time = nsecs;
+    if ($start_time < $curr_time) {
+        $duration = $curr_time - $start_time;
+        @totalTime["delete_from_page_cache_batch"] = sum($duration);
+        delete(@start[pid, "delete_from_page_cache_batch"]);
+    }
+}
+
 kprobe:shrink_lruvec {
     @start[pid, "shrink_lruvec"] = nsecs;
 }
 
 kretprobe:shrink_lruvec /@start[pid, "shrink_lruvec"]/{
-    $duration = nsecs - @start[pid, "shrink_lruvec"];
-    @totalTime["shrink_lruvec"] = sum($duration);
-    delete(@start[pid, "shrink_lruvec"]);
+    $start_time = @start[pid, "shrink_lruvec"];
+    $curr_time = nsecs;
+    if ($start_time < $curr_time) {
+        $duration = $curr_time - $start_time;
+        @totalTime["shrink_lruvec"] = sum($duration);
+        delete(@start[pid, "shrink_lruvec"]);
+    }
 }
 
-kprobe:get_page_cache_ext_ops {
-    @start[pid, "get_page_cache_ext_ops"] = nsecs;
+kprobe:shrink_active_list {
+    @start[pid, "shrink_active_list"] = nsecs;
 }
 
-kretprobe:get_page_cache_ext_ops /@start[pid, "get_page_cache_ext_ops"]/{
-    $duration = nsecs - @start[pid, "get_page_cache_ext_ops"];
-    @totalTime["get_page_cache_ext_ops"] = sum($duration);
-    delete(@start[pid, "get_page_cache_ext_ops"]);
+kretprobe:shrink_active_list /@start[pid, "shrink_active_list"]/{
+    $start_time = @start[pid, "shrink_active_list"];
+    $curr_time = nsecs;
+    if ($start_time < $curr_time) {
+        $duration = $curr_time - $start_time;
+        @totalTime["shrink_active_list"] = sum($duration);
+        delete(@start[pid, "shrink_active_list"]);
+    }
 }
+
+kprobe:shrink_list {
+    @start[pid, "shrink_list"] = nsecs;
+}
+
+kretprobe:shrink_list /@start[pid, "shrink_list"]/{
+    $start_time = @start[pid, "shrink_list"];
+    $curr_time = nsecs;
+    if ($start_time < $curr_time) {
+        $duration = $curr_time - $start_time;
+        @totalTime["shrink_list"] = sum($duration);
+        delete(@start[pid, "shrink_list"]);
+    }
+}
+
+kprobe:__filemap_remove_folio {
+    @start[pid, "__filemap_remove_folio"] = nsecs;
+}
+
+kretprobe:__filemap_remove_folio /@start[pid, "__filemap_remove_folio"]/{
+    $duration = nsecs - @start[pid, "__filemap_remove_folio"];
+    @totalTime["__filemap_remove_folio"] = sum($duration);
+    delete(@start[pid, "__filemap_remove_folio"]);
+}
+
 
 END {
     // Print total execution times for each function
-    printf("Total execution times:\n");
+    printf("Total execution times:");
     print(@totalTime);
     clear(@start); // Clear start times map
+    clear(@totalTime);
 }
