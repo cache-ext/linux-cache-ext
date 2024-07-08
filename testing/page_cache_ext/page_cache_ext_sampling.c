@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <argp.h>
+#include <limits.h>
 
 #include "page_cache_ext_sampling.skel.h"
 #include "dir_watcher.h"
@@ -66,10 +67,9 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	// Get full path of watch_dir
-	char *watch_dir_full_path = realpath(args.watch_dir, NULL);
-	if (watch_dir_full_path == NULL) {
-		fprintf(stderr, "Failed to get full path of watch_dir: %s\n",
-			strerror(errno));
+	char watch_dir_full_path[PATH_MAX];
+	if (realpath(args.watch_dir, watch_dir_full_path) == NULL) {
+		perror("realpath");
 		return 1;
 	}
 	// TODO: Enable longer length
@@ -91,10 +91,6 @@ int main(int argc, char **argv)
 	skel->rodata->watch_dir_path_len = strlen(watch_dir_full_path);
 	strcpy(skel->rodata->watch_dir_path, watch_dir_full_path);
 
-	// Initialize inode_watchlist map
-	ret = initialize_watch_dir_map(args.watch_dir,
-				       bpf_map__fd(skel->maps.inode_watchlist));
-
 	// Load programs
 	ret = page_cache_ext_sampling_bpf__load(skel);
 	if (ret) {
@@ -103,10 +99,24 @@ int main(int argc, char **argv)
 		page_cache_ext_sampling_bpf__destroy(skel);
 		return 1;
 	}
+
+	// Initialize inode_watchlist map
+	ret = initialize_watch_dir_map(args.watch_dir,
+				       bpf_map__fd(skel->maps.inode_watchlist));
+
 	// Load struct_ops map
 	link = bpf_map__attach_struct_ops(skel->maps.sampling_ops);
 	if (link == NULL) {
 		fprintf(stderr, "Failed to attach BPF struct_ops map: %s\n",
+			strerror(errno));
+		page_cache_ext_sampling_bpf__destroy(skel);
+		return 1;
+	}
+
+	// Attach probes
+	ret = page_cache_ext_sampling_bpf__attach(skel);
+	if (ret) {
+		fprintf(stderr, "Failed to attach BPF programs: %s\n",
 			strerror(errno));
 		page_cache_ext_sampling_bpf__destroy(skel);
 		return 1;

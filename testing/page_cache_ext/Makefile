@@ -39,7 +39,7 @@ $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
 
 .SECONDARY:
-%.bpf.o: %.bpf.c $(VMLINUX_H)
+%.bpf.o: %.bpf.c $(VMLINUX_H) dir_watcher.bpf.h
 	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $< -o $@
 
 .SECONDARY:

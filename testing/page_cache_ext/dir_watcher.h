@@ -32,6 +32,7 @@ int initialize_watch_dir_map(const char *path, int watch_dir_map_fd) {
 		char *filename = ent->d_name;
 		char *filepath = (char *)malloc(strlen(path) + strlen(filename) + 2);
 		sprintf(filepath, "%s/%s", path, filename);
+		free(filepath);
 
 		__u8 zero = 0;
 

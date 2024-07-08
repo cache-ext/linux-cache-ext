@@ -40,7 +40,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, __u64);
 	__type(value, struct folio_metadata);
-	__uint(max_entries, 1048576);
+	__uint(max_entries, 1248576);
 } folio_metadata_map SEC(".maps");
 
 struct {
@@ -61,20 +61,6 @@ struct {
 /* Counter for list size */
 __u64 list_size = 0;
 
-/* Test inode */
-__u64 TEST_INODE_INO = -1;
-
-inline bool is_test_inode(struct folio *folio)
-{
-	if (folio->mapping == NULL) {
-		return false;
-	}
-	if (folio->mapping->host == NULL) {
-		return false;
-	}
-	return folio->mapping->host->i_ino == TEST_INODE_INO;
-}
-
 inline u64 get_sampling_list()
 {
 	int zero = 0;
@@ -84,6 +70,20 @@ inline u64 get_sampling_list()
 		return 0;
 	}
 	return *sampling_list;
+}
+
+inline bool is_folio_relevant(struct folio *folio)
+{
+	if (!folio) {
+		return false;
+	}
+	if (folio->mapping == NULL) {
+		return false;
+	}
+	if (folio->mapping->host == NULL) {
+		return false;
+	}
+	return inode_in_watchlist(folio->mapping->host->i_ino);
 }
 
 // SEC("struct_ops.s/sampling_init")
@@ -106,7 +106,7 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 {
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_folio_added hook! :D\n");
-	if (!is_test_inode(folio)) {
+	if (!is_folio_relevant(folio)) {
 		return;
 	}
 	u64 sampling_list = get_sampling_list();
@@ -142,7 +142,7 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 
 void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 {
-	if (!is_test_inode(folio)) {
+	if (!is_folio_relevant(folio)) {
 		return;
 	}
 	// TODO: Update folio metadata with other values we want to track
@@ -180,6 +180,28 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 	bpf_map_delete_elem(&folio_metadata_map, &key);
 }
 
+static inline bool is_last_page_in_file(struct folio *folio)
+{
+	struct address_space *mapping = folio->mapping;
+	if (!mapping) {
+		return false;
+	}
+	struct inode *inode = mapping->host;
+	if (!inode) {
+		return false;
+	}
+	// TODO: Handle hugepages
+	if (folio_test_large(folio) ||  folio_test_hugetlb(folio)) {
+		bpf_printk("page_cache_ext: Hugepages not supported\n");
+		return false;
+	}
+	unsigned long long file_size = i_size_read(inode);
+	unsigned long long page_index = folio_index(folio);
+	unsigned long long page_size = 4096;
+	unsigned long long last_page_index = (file_size + page_size - 1) / page_size - 1;
+	return page_index == last_page_index;
+}
+
 static s64 bpf_mru_score_fn(struct cache_ext_list_node *a)
 {
 	struct folio_metadata *meta_a;
@@ -205,6 +227,7 @@ static s64 bpf_mru_score_fn(struct cache_ext_list_node *a)
 
 static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 {
+	s64 score = 0;
 	struct folio_metadata *meta_a;
 	u64 key_a = (u64)a->folio;
 	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
@@ -212,7 +235,13 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 		bpf_printk("page_cache_ext: Failed to get metadata\n");
 		return 0;
 	}
-	return meta_a->accesses;
+	score = meta_a->accesses;
+	// In leveldb, the index block is at the end of the file.
+	if (is_last_page_in_file(a->folio)) {
+		// bpf_printk("page_cache_ext: Found last page in file\n");
+		score += 100000;
+	}
+	return score;
 }
 
 void BPF_STRUCT_OPS(sampling_evict_folios,

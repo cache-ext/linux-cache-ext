@@ -42,6 +42,10 @@ u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg) __ksym;
 #define test_bit(nr, addr)		bitop(_test_bit, nr, addr)
 #define _test_bit
 
+#define FOLIO_PF_ANY		0
+#define pgoff_t unsigned long
+
+
 static __always_inline bool
 generic_test_bit(unsigned long nr, const volatile unsigned long *addr)
 {
@@ -73,6 +77,42 @@ static inline bool folio_test_lru(struct folio *folio)
 
 	return ret;
 }
+
+
+static __always_inline bool folio_test_head(struct folio *folio)
+{
+	return generic_test_bit(PG_head, folio_flags(folio, FOLIO_PF_ANY));
+}
+
+static inline bool folio_test_large(struct folio *folio)
+{
+	return folio_test_head(folio);
+}
+
+
+static inline bool folio_test_hugetlb(struct folio *folio)
+{
+	return folio_test_large(folio) &&
+		generic_test_bit(PG_hugetlb, folio_flags(folio, 1));
+}
+
+static inline loff_t i_size_read(const struct inode *inode)
+{
+	// IMPORTANT: This assumes a 64-bit kernel.
+	// TODO: Don't compile if that's not the case.
+	return inode->i_size;
+}
+
+
+/* from pagemap.h */
+static inline pgoff_t folio_index(struct folio *folio)
+{
+	// TODO: Handle swapcache
+	// if (unlikely(folio_test_swapcache(folio)))
+	//         return swapcache_index(folio);
+	return folio->index;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Generic Utils //////////////////////////////////////////////////////////////

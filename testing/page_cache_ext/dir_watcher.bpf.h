@@ -17,10 +17,10 @@ struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key, __u64);
     __type(value, bool);
-    __uint(max_entries, 30000);
+    __uint(max_entries, 200000);
 } inode_watchlist SEC(".maps");
 
-inline bool inode_in_watchlist(u64 inode_no) {
+static inline bool inode_in_watchlist(u64 inode_no) {
     // Start simple. Return true if file page and not executable.
     // TODO: Fill me
     u8 *ret = bpf_map_lookup_elem(&inode_watchlist, &inode_no);

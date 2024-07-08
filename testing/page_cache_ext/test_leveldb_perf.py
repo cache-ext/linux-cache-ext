@@ -3,10 +3,12 @@ import re
 import json
 import uuid
 import logging
+import argparse
 import subprocess
 
 from time import sleep
 from typing import Dict
+from contextlib import suppress
 
 log = logging.getLogger(__name__)
 GiB = 2**30
@@ -18,7 +20,25 @@ def run(cmd, *args, **kwargs):
     return subprocess.run(cmd, *args, **kwargs)
 
 
-def create_cache_ext_cgroup(limit_in_bytes=2*GiB):
+def read_file(path: str):
+    with open(path, "r") as f:
+        return f.read().strip()
+
+
+def write_file(path: str, data: str):
+    with open(path, "w") as f:
+        f.write(data)
+
+
+def enable_cache_ext_for_cgroup(cgroup="cache_ext_test"):
+    # echo -n "/cache_ext_test" > /proc/page_cache_ext_enabled_cgroup
+    run(["echo", "-n", "/%s" % cgroup, ">",
+         "/proc/page_cache_ext_enabled_cgroup"])
+
+
+def recreate_cache_ext_cgroup(limit_in_bytes=2*GiB):
+    with suppress(subprocess.CalledProcessError):
+        run(["sudo", "cgdelete", "memory:cache_ext_test"])
     # Create cache_ext cgroup
     run(["sudo", "cgcreate", "-g", "memory:cache_ext_test"])
 
@@ -29,7 +49,10 @@ def create_cache_ext_cgroup(limit_in_bytes=2*GiB):
     run(["sudo", "sh", "-c", "echo -n '/cache_ext_test' > /proc/page_cache_ext_enabled_cgroup"])
 
 
-def create_baseline_cgroup(limit_in_bytes=2*GiB):
+def recreate_baseline_cgroup(limit_in_bytes=2*GiB):
+    with suppress(subprocess.CalledProcessError):
+        run(["sudo", "cgdelete", "memory:baseline_test"])
+
     # Create baseline cgroup
     run(["sudo", "cgcreate", "-g", "memory:baseline_test"])
 
@@ -152,9 +175,10 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
 
 
 class CacheExtPolicy:
-    def __init__(self, cgroup: str, loader_path: str):
+    def __init__(self, cgroup: str, loader_path: str, watch_dir: str):
         self.cgroup_path = "/sys/fs/cgroup/%s" % cgroup
         self.loader_path = loader_path
+        self.watch_dir = watch_dir
         self.has_started = False
         self._policy_thread = None
 
@@ -162,7 +186,7 @@ class CacheExtPolicy:
         if self.has_started:
             raise Exception("Policy already started")
         self.has_started = True
-        cmd = ["sudo", self.loader_path]
+        cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
         self._policy_thread = subprocess.Popen(cmd,
                                                stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE)
@@ -180,6 +204,7 @@ class CacheExtPolicy:
         log.info("Policy thread stdout: %s", out)
         log.info("Policy thread stderr: %s", err)
         self.has_started = False
+        self._policy_thread = None
 
 
 def disable_smt():
@@ -188,11 +213,29 @@ def disable_smt():
 
 CLEANUP_TASKS = []
 
-def main():
-    bench_binary_dir = "/mydata/My-YCSB/build"
 
-    create_cache_ext_cgroup()
-    create_baseline_cgroup()
+def parse_args():
+    parser = argparse.ArgumentParser("Benchmark LevelDB with cache_ext")
+    parser.add_argument(
+        "--leveldb-db",
+        type=str,
+        default="/mydata/leveldb_db",
+        help="Specify the directory to watch for cache_ext",
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    bench_binary_dir = "/mydata/My-YCSB/build"
+    leveldb_db_dir = os.path.realpath(args.leveldb_db)
+    cgroup_size_in_bytes = 5 * GiB
+
+    # Sanity check that dir exists
+    if not os.path.exists(leveldb_db_dir):
+        raise Exception("LevelDB DB directory not found: %s" % leveldb_db_dir)
+    log.info("LevelDB DB directory: %s", leveldb_db_dir)
+
     disable_swap()
     disable_smt()
 
@@ -205,36 +248,50 @@ def main():
     if not os.path.exists(policy_loader_binary):
         raise Exception("Policy loader binary not found: %s" %
                         policy_loader_binary)
-    cache_ext_policy = CacheExtPolicy("cache_ext_test", policy_loader_binary)
+    cache_ext_policy = CacheExtPolicy("cache_ext_test", policy_loader_binary,
+                                      leveldb_db_dir)
 
-    # cache_ext_policy.start()
-    # CLEANUP_TASKS.append(lambda: cache_ext_policy.stop())
-    num_iterations = 3
+    CLEANUP_TASKS.append(lambda: cache_ext_policy.stop())
+    num_iterations = 1
     for enable_mmap in [False]:
-        for cgroup in ["cache_ext_test"]:
-            for i in range(num_iterations):
-                log.info("Running iteration %d with cgroup %s", i, cgroup)
-                # Reset the environment
-                reset_database()
-                drop_page_cache()
-                # Run the benchmark
-                cmd_env = os.environ.copy()
-                if enable_mmap:
-                    cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
-                cmd = ["taskset", "-c", "0-4",
-                       "sudo", "cgexec", "-g", "memory:%s" % cgroup,
-                       "./run_leveldb", "../leveldb/config/ycsb_a.yaml"]
-                out = subprocess.check_output(cmd, cwd=bench_binary_dir,
-                                              text=True, env=cmd_env)
-                bench_results = parse_leveldb_bench_results(out)
-                all_results.append({
-                    "enable_mmap": enable_mmap,
-                    "cgroup": cgroup,
-                    "run_id": uuid.uuid4().hex,
-                    "results": bench_results
-                })
-                # Save results
-                save_json(results_file, all_results)
+        for benchmark in ["ycsb_c"]:
+            for cgroup in ["cache_ext_test", "baseline_test"]:
+                for i in range(num_iterations):
+                    if cgroup == "cache_ext_test":
+                        recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size_in_bytes)
+                    else:
+                        recreate_baseline_cgroup(limit_in_bytes=cgroup_size_in_bytes)
+                    log.info("Running iteration %d with cgroup %s", i, cgroup)
+                    # Reset the environment
+                    reset_database()
+                    drop_page_cache()
+                    if cgroup == "cache_ext_test":
+                        log.info("Starting cache_ext policy")
+                        cache_ext_policy.start()
+                    # Run the benchmark
+                    cmd_env = os.environ.copy()
+                    if enable_mmap:
+                        cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
+                    bench_file = "../leveldb/config/%s.yaml" % benchmark
+                    cmd = ["taskset", "-c", "0-5",
+                           "sudo", "cgexec", "-g", "memory:%s" % cgroup,
+                           "./run_leveldb", bench_file]
+                    out = subprocess.check_output(cmd, cwd=bench_binary_dir,
+                                                  text=True, env=cmd_env)
+                    bench_results = parse_leveldb_bench_results(out)
+                    all_results.append({
+                        "enable_mmap": enable_mmap,
+                        "cgroup": cgroup,
+                        "cgroup_size_in_bytes": cgroup_size_in_bytes,
+                        "run_id": uuid.uuid4().hex,
+                        "benchmark": benchmark,
+                        "results": bench_results
+                    })
+                    # Save results
+                    save_json(results_file, all_results)
+                    if cgroup == "cache_ext_test":
+                        log.info("Stopping cache_ext policy")
+                        cache_ext_policy.stop()
 
 
 if __name__ == "__main__":

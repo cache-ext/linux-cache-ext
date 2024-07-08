@@ -10,6 +10,7 @@
  *  Multiqueue VM started 5.8.00, Rik van Riel.
  */
 
+#include "linux/page-flags.h"
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/mm_types.h>
@@ -6312,6 +6313,7 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 static bool page_cache_ext_isolate_folio(struct folio *folio) {
 	struct lruvec *lruvec;
+	enum lru_list lru;
 
 	if (folio_test_unevictable(folio)) {
 		pr_debug("cache_ext: Failed to isolate because unevictable\n");
@@ -6332,9 +6334,27 @@ static bool page_cache_ext_isolate_folio(struct folio *folio) {
 	}
 
 	lruvec = folio_lruvec_lock_irq(folio);
+
+	// What list was this folio in? Find out from the page flags.
+	if (folio_test_anon(folio)) {
+		if (folio_test_active(folio)) {
+			lru = LRU_ACTIVE_ANON;
+		} else {
+			lru = LRU_INACTIVE_ANON;
+		}
+	} else {
+		if (folio_test_active(folio)) {
+			lru = LRU_ACTIVE_FILE;
+		} else {
+			lru = LRU_INACTIVE_FILE;
+		}
+	}
+
 	/* remove from list */
 	list_del(&folio->lru);
 	// TODO: Update lru size
+	long nr_pages = folio_nr_pages(folio);
+	update_lru_size(lruvec, lru, folio_zonenum(folio), -nr_pages);
 	unlock_page_lruvec_irq(lruvec);
 	return true;
 }
@@ -6449,7 +6469,32 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	 */
 	unsigned long nr_to_evict = nr[LRU_INACTIVE_FILE];
 	nr_reclaimed += page_cache_ext_isolate_and_reclaim(lruvec, nr_to_evict);
-	nr[LRU_INACTIVE_FILE] -= nr_reclaimed;
+	if (nr_reclaimed > nr[LRU_INACTIVE_FILE]) {
+		nr[LRU_INACTIVE_FILE] = 0;
+	} else {
+		nr[LRU_INACTIVE_FILE] -= nr_reclaimed;
+	}
+
+	// TODO: nr[LRU_INACTIVE_FILE] is actually the number of pages to scan, not
+	// the number of pages to evict. Might need to fix this in the future.
+	if (nr[LRU_INACTIVE_FILE] > 1500) {
+		pr_warn("cache_ext: Got a lot of pages to evict: %lu. Is that normal?\n",
+			nr[LRU_INACTIVE_FILE]);
+	}
+	// If we more or less evicted all the pages we wanted, exit.
+	// Assumptions:
+	// - No swap.
+	// - Unmaintained active list is ok.
+
+	unsigned long long threshold_pct = 90;
+	unsigned long long reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
+	// TODO: Check the nr_reclaimed is less than nr_to_evict
+	if (reclaim_pct > threshold_pct) {
+		blk_finish_plug(&plug);
+		sc->nr_reclaimed += nr_reclaimed;
+		sc->nr_scanned += nr_reclaimed;
+		return;
+	}
 	/***********************************************************************/
 
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
