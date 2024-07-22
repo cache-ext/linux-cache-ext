@@ -166,12 +166,12 @@ def approx_equal(a, b, tolerance=0.1):
     return abs(a - b) <= tolerance * a
 
 
-def create_test_file(path="testfile", size_in_bytes=1 * GB):
+def create_test_file(path="test_dir/testfile", size_in_bytes=1 * GB):
     with open(path, "wb") as f:
         f.write(os.urandom(size_in_bytes))
 
 
-def test_file_exists(path="testfile", size_in_bytes=1 * GB):
+def test_file_exists(path="test_dir/testfile", size_in_bytes=1 * GB):
     if not os.path.exists(path):
         return False
     return approx_equal(os.path.getsize(path), size_in_bytes)
@@ -226,7 +226,7 @@ def main():
     log.info("Running test workload in a loop")
     log.info("Press Ctrl+C to stop the test")
     # Open the file and read it start to end in a loop
-    with open("testfile", "rb") as f:
+    with open("test_dir/testfile", "rb") as f:
         # fadvise random
         os.posix_fadvise(f.fileno(), 0, 0, os.POSIX_FADV_RANDOM)
         # Read in 4k increments, use read system call
@@ -240,7 +240,7 @@ def main():
                     ftime_tracer = FuncTimeTracer()
                     tracer.start()
                     ftime_tracer.start()
-                file_size = os.path.getsize("testfile")
+                file_size = os.path.getsize("test_dir/testfile")
                 page_size = 4 * KB
                 file_size_in_pages = int(file_size // page_size)
                 for iter in range(args.iterations):
@@ -259,7 +259,7 @@ def main():
                     avg_read_latency = stats.read_time / stats.read_count
                     print("Average read latency: %.1f us" % (avg_read_latency / 1e3))
                     # Get testfile size in bytes
-                    file_size = os.path.getsize("testfile")
+                    file_size = os.path.getsize("test_dir/testfile")
                     page_size = 4 * 2 ** 10
                     file_size_in_pages = int(file_size // page_size)
                     total_accesses = args.iterations * file_size_in_pages

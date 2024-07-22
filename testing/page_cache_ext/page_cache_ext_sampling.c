@@ -104,6 +104,15 @@ int main(int argc, char **argv)
 	ret = initialize_watch_dir_map(args.watch_dir,
 				       bpf_map__fd(skel->maps.inode_watchlist));
 
+	// Pin scan_pids map
+	ret = bpf_map__pin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
+	if (ret < 0) {
+		fprintf(stderr, "Failed to pin scan_pids map: %s\n",
+			strerror(errno));
+		page_cache_ext_sampling_bpf__destroy(skel);
+		return 1;
+	}
+
 	// Load struct_ops map
 	link = bpf_map__attach_struct_ops(skel->maps.sampling_ops);
 	if (link == NULL) {
