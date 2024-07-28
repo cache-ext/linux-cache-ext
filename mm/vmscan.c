@@ -6487,7 +6487,8 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	// - Unmaintained active list is ok.
 
 	unsigned long long threshold_pct = 90;
-	unsigned long long reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
+	unsigned long long reclaim_pct = 0;
+	if (nr_to_evict > 0) reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
 	// TODO: Check the nr_reclaimed is less than nr_to_evict
 	if (reclaim_pct > threshold_pct) {
 		blk_finish_plug(&plug);
