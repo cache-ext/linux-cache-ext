@@ -238,11 +238,12 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	score = meta_a->accesses;
 	// In leveldb, the index block is at the end of the file.
 	bool is_last_page = is_last_page_in_file(a->folio);
-	bool is_part_of_scan = is_scanning_pid(a->folio);
+	bool is_part_of_scan = is_scanning_pid();
 	if (is_last_page) {
 		// bpf_printk("page_cache_ext: Found last page in file\n");
 		score += 100000;
 	} else if (is_part_of_scan) {
+		bpf_printk("page_cache_ext: Found page in scan\n");
 		score -= 10000;
 	}
 	return score;

@@ -75,7 +75,26 @@ The current architecture is the following:
     sudo sh -c 'echo 1073741824 > /sys/fs/cgroup/baseline_test/memory.max'
     ```
 
-## Test LevelDB
+## LevelDB
+
+### Create database
+
+```sh
+# Install rclone
+sudo apt-get install rclone
+
+# Setup rclone
+rclone config
+
+# Clone the db
+DB="leveldb_db"
+rclone sync  --transfers $(nproc) --checkers $(nproc) b2:leveldb/$DB /mydata/leveldb_db
+
+# Use a copy for testing
+rsync -avpl --delete /mydata/leveldb_db/ /nvme/leveldb_db_temp
+```
+
+### Test LevelDB
 
 1. Create a new memory cgroup with 5GB limit for the demo.
 
