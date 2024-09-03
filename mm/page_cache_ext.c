@@ -30,6 +30,8 @@ bpf_page_cache_ext_get_func_proto(enum bpf_func_id func_id,
 				  const struct bpf_prog *prog)
 {
 	switch (func_id) {
+	case BPF_FUNC_get_current_pid_tgid:
+		return &bpf_get_current_pid_tgid_proto;
 	default:
 		return bpf_base_func_proto(func_id);
 	}

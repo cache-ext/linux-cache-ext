@@ -34,6 +34,7 @@ char _license[] SEC("license") = "GPL";
 struct folio_metadata {
 	u64 accesses;
 	u64 last_access_time;
+	bool touched_by_scan;
 };
 
 struct {
@@ -57,9 +58,28 @@ struct {
 	__uint(max_entries, 1);
 } is_first_eviction SEC(".maps");
 
+#define MAX_STAT_NAME_LEN 256
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, char[MAX_STAT_NAME_LEN]);
+	__type(value, u64);
+	__uint(max_entries, 256);
+} stats SEC(".maps");
+
+// Keys for stats
+char STAT_SCAN_PAGES[MAX_STAT_NAME_LEN] = "scan_pages";
+char STAT_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "total_pages";
 
 /* Counter for list size */
 __u64 list_size = 0;
+
+inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], u64 delta) {
+	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
+	if (counter) {
+		__sync_fetch_and_add(counter, delta);
+	}
+}
 
 inline u64 get_sampling_list()
 {
@@ -133,9 +153,16 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	__sync_fetch_and_add(&list_size, 1);
 	dbg_printk("page_cache_ext: Added folio to sampling_list\n");
 
+	bool touched_by_scan = is_scanning_pid();
+	update_stat(&STAT_TOTAL_PAGES, 1);
+	if (touched_by_scan) {
+		update_stat(&STAT_SCAN_PAGES, 1);
+	}
+
 	// Create folio metadata
 	u64 key = (u64)folio;
-	struct folio_metadata new_meta = { .accesses = 1 };
+	struct folio_metadata new_meta = { .accesses = 1,
+									   .touched_by_scan = touched_by_scan };
 	new_meta.last_access_time = bpf_ktime_get_ns();
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
@@ -177,7 +204,18 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 
 	__sync_fetch_and_add(&list_size, -1);
 	u64 key = (u64)folio;
+	bool touched_by_scan = false;
+	struct folio_metadata *meta = bpf_map_lookup_elem(&folio_metadata_map, &key);
+	if (meta) {
+		touched_by_scan = meta->touched_by_scan;
+	}
 	bpf_map_delete_elem(&folio_metadata_map, &key);
+	// Update stats
+	if (touched_by_scan) {
+		update_stat(&STAT_SCAN_PAGES, -1);
+	}
+	update_stat(&STAT_TOTAL_PAGES, -1);
+
 }
 
 static inline bool is_last_page_in_file(struct folio *folio)
@@ -238,11 +276,31 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	score = meta_a->accesses;
 	// In leveldb, the index block is at the end of the file.
 	bool is_last_page = is_last_page_in_file(a->folio);
-	bool is_part_of_scan = is_scanning_pid();
 	if (is_last_page) {
 		// bpf_printk("page_cache_ext: Found last page in file\n");
 		score += 100000;
-	} else if (is_part_of_scan) {
+	}
+	return score;
+}
+
+static s64 bpf_lfu_with_scans_score_fn(struct cache_ext_list_node *a)
+{
+	s64 score = 0;
+	struct folio_metadata *meta_a;
+	u64 key_a = (u64)a->folio;
+	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
+	if (!meta_a) {
+		bpf_printk("page_cache_ext: Failed to get metadata\n");
+		return 0;
+	}
+	score = meta_a->accesses;
+	// In leveldb, the index block is at the end of the file.
+	bool is_last_page = is_last_page_in_file(a->folio);
+	bool touched_by_scan = meta_a->touched_by_scan;
+	if (is_last_page) {
+		// bpf_printk("page_cache_ext: Found last page in file\n");
+		score += 100000;
+	} else if (touched_by_scan) {
 		bpf_printk("page_cache_ext: Found page in scan\n");
 		score -= 10000;
 	}
@@ -272,7 +330,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	struct sampling_options sampling_opts = {
 		.sample_size = 10,
 	};
-	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
+	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_with_scans_score_fn,
 				  &sampling_opts, eviction_ctx);
 	dbg_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
 			   eviction_ctx->nr_folios_to_evict,

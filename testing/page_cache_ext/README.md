@@ -87,8 +87,7 @@ sudo apt-get install rclone
 rclone config
 
 # Clone the db
-DB="leveldb_db"
-rclone sync  --transfers $(nproc) --checkers $(nproc) b2:leveldb/$DB /mydata/leveldb_db
+rclone sync --progress --transfers $(nproc) --checkers $(nproc) b2:leveldb /mydata/leveldb_db
 
 # Use a copy for testing
 rsync -avpl --delete /mydata/leveldb_db/ /nvme/leveldb_db_temp
