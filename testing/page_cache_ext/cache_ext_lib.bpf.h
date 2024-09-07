@@ -153,7 +153,7 @@ static inline u32 bpf_get_random_biased(u32 max) {
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, __u64);
+    __type(key, int);
     __type(value, bool);
     __uint(max_entries, 100);
 } scan_pids SEC(".maps");

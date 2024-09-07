@@ -90,7 +90,7 @@ rclone config
 rclone sync --progress --transfers $(nproc) --checkers $(nproc) b2:leveldb /mydata/leveldb_db
 
 # Use a copy for testing
-rsync -avpl --delete /mydata/leveldb_db/ /nvme/leveldb_db_temp
+rsync -avpl --delete /mydata/leveldb_db/ /mydata/leveldb_db_temp
 ```
 
 ### Test LevelDB

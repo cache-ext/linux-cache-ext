@@ -1,7 +1,9 @@
 import os
 import re
+import sys
 import json
 import uuid
+import select
 import logging
 import argparse
 import subprocess
@@ -12,6 +14,61 @@ from contextlib import suppress
 
 log = logging.getLogger(__name__)
 GiB = 2**30
+
+
+def run_command_with_live_output(command, **kwargs):
+    # Default kwargs for Popen
+    popen_kwargs = {
+        'stdout': subprocess.PIPE,
+        'stderr': subprocess.PIPE,
+        'text': True,
+        'bufsize': 1,
+        'universal_newlines': True
+    }
+
+    # Update with any user-provided kwargs
+    popen_kwargs.update(kwargs)
+
+    process = subprocess.Popen(command, **popen_kwargs)
+
+    stdout_output = []
+    stderr_output = []
+
+    # Set stdout and stderr to non-blocking mode
+    for pipe in [process.stdout, process.stderr]:
+        if pipe:
+            os.set_blocking(pipe.fileno(), False)
+
+    while True:
+        ready_to_read, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+
+        for pipe in ready_to_read:
+            if pipe == process.stdout:
+                line = process.stdout.readline()
+                if line:
+                    print(line.strip())
+                    stdout_output.append(line)
+            elif pipe == process.stderr:
+                line = process.stderr.readline()
+                if line:
+                    print(line.strip(), file=sys.stderr)
+                    stderr_output.append(line)
+
+        if process.poll() is not None:
+            break
+
+    # Read any remaining output
+    for pipe in [process.stdout, process.stderr]:
+        if pipe:
+            remaining_output = pipe.read()
+            if remaining_output:
+                print(remaining_output.strip(), file=sys.stderr if pipe == process.stderr else sys.stdout)
+                (stderr_output if pipe == process.stderr else stdout_output).append(remaining_output)
+
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, command, ''.join(stdout_output), ''.join(stderr_output))
+
+    return ''.join(stdout_output)
 
 
 def run(cmd, *args, **kwargs):
@@ -72,8 +129,8 @@ def disable_swap():
 
 def reset_database():
     # rsync -avpl --delete /mydata/leveldb_db_orig/ /mydata/leveldb_db/
-    run(["rsync", "-avpl", "--delete", "/mydata/leveldb_orig/",
-         "/mydata/leveldb_db/"])
+    run(["rsync", "-avpl", "--delete", "/mydata/leveldb_db/",
+         "/mydata/leveldb_db_temp"])
 
 
 def load_json(path: str):
@@ -201,6 +258,8 @@ class CacheExtPolicy:
         cmd = ["sudo", "kill", "-2", str(self._policy_thread.pid)]
         run(cmd)
         out, err = self._policy_thread.communicate()
+        with suppress(subprocess.CalledProcessError):
+            run(["sudo", "rm", "/sys/fs/bpf/cache_ext/scan_pids"])
         log.info("Policy thread stdout: %s", out)
         log.info("Policy thread stderr: %s", err)
         self.has_started = False
@@ -229,7 +288,7 @@ def main():
     args = parse_args()
     bench_binary_dir = "/mydata/My-YCSB/build"
     leveldb_db_dir = os.path.realpath(args.leveldb_db)
-    cgroup_size_in_bytes = 5 * GiB
+    cgroup_size_in_bytes = 3 * GiB
 
     # Sanity check that dir exists
     if not os.path.exists(leveldb_db_dir):
@@ -255,43 +314,53 @@ def main():
     num_iterations = 1
     for enable_mmap in [False]:
         for benchmark in ["ycsb_c"]:
-            for cgroup in ["cache_ext_test", "baseline_test"]:
-                for i in range(num_iterations):
-                    if cgroup == "cache_ext_test":
-                        recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size_in_bytes)
-                    else:
-                        recreate_baseline_cgroup(limit_in_bytes=cgroup_size_in_bytes)
-                    log.info("Running iteration %d with cgroup %s", i, cgroup)
-                    # Reset the environment
-                    reset_database()
-                    drop_page_cache()
-                    if cgroup == "cache_ext_test":
-                        log.info("Starting cache_ext policy")
-                        cache_ext_policy.start()
-                    # Run the benchmark
-                    cmd_env = os.environ.copy()
-                    if enable_mmap:
-                        cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
-                    bench_file = "../leveldb/config/%s.yaml" % benchmark
-                    cmd = ["taskset", "-c", "0-5",
-                           "sudo", "cgexec", "-g", "memory:%s" % cgroup,
-                           "./run_leveldb", bench_file]
-                    out = subprocess.check_output(cmd, cwd=bench_binary_dir,
-                                                  text=True, env=cmd_env)
-                    bench_results = parse_leveldb_bench_results(out)
-                    all_results.append({
-                        "enable_mmap": enable_mmap,
-                        "cgroup": cgroup,
-                        "cgroup_size_in_bytes": cgroup_size_in_bytes,
-                        "run_id": uuid.uuid4().hex,
-                        "benchmark": benchmark,
-                        "results": bench_results
-                    })
-                    # Save results
-                    save_json(results_file, all_results)
-                    if cgroup == "cache_ext_test":
-                        log.info("Stopping cache_ext policy")
-                        cache_ext_policy.stop()
+        # for benchmark in ["ycsb_c", "mixed_get_scan"]:
+            # for cgroup_size_in_bytes in [3*GiB, 5*GiB, 10*GiB]:
+            for cgroup_size_in_bytes in [20*GiB]:
+                # for cgroup in ["cache_ext_test", "baseline_test"]:
+                for cgroup in ["baseline_test"]:
+                    for i in range(num_iterations):
+                        if cgroup == "cache_ext_test":
+                            recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size_in_bytes)
+                        else:
+                            recreate_baseline_cgroup(limit_in_bytes=cgroup_size_in_bytes)
+                        log.info("Running iteration %d with cgroup %s", i, cgroup)
+                        # Reset the environment
+                        reset_database()
+                        drop_page_cache()
+                        sleep(2)
+                        if cgroup == "cache_ext_test":
+                            log.info("Starting cache_ext policy")
+                            cache_ext_policy.start()
+                        # Run the benchmark
+                        cmd_env = os.environ.copy()
+                        if cgroup == "cache_ext_test":
+                            cmd_env["ENABLE_BPF_SCAN_MAP"] = "1"
+                        if enable_mmap:
+                            cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
+                        bench_file = "../leveldb/config/%s.yaml" % benchmark
+                        cmd = ["taskset", "-c", "0-5",
+                            "sudo", "cgexec", "-g", "memory:%s" % cgroup,
+                            "./run_leveldb", bench_file]
+                        # out = subprocess.check_output(cmd, cwd=bench_binary_dir,
+                        #                               text=True, env=cmd_env)
+                        out = run_command_with_live_output(
+                            cmd, cwd=bench_binary_dir, env=cmd_env)
+                        bench_results = parse_leveldb_bench_results(out)
+                        all_results.append({
+                            "enable_mmap": enable_mmap,
+                            "cgroup": cgroup,
+                            "cgroup_size_in_bytes": cgroup_size_in_bytes,
+                            "run_id": uuid.uuid4().hex,
+                            "benchmark": benchmark,
+                            "results": bench_results
+                        })
+                        # Save results
+                        save_json(results_file, all_results)
+                        if cgroup == "cache_ext_test":
+                            log.info("Stopping cache_ext policy")
+                            sleep(2)
+                            cache_ext_policy.stop()
 
 
 if __name__ == "__main__":

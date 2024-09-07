@@ -293,19 +293,18 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		&snipped_list, struct cache_ext_list_node, node);
 	for (int i = 0; i < ctx->request_nr_folios_to_evict; i++) {
 		struct cache_ext_list_node *min_node = NULL;
-		s64 min_score;
+		s64 min_score = S64_MAX;
 		for (int j = 0; j < select_every_nth; j++) {
 			if (curr_node == NULL) {
 				pr_warn("cache_ext: curr_node is NULL, ran out of folios to evict\n");
 				break;
 			}
+			s64 curr_score = score_fn(curr_node);
 			if (j == 0) {
 				min_node = curr_node;
-				min_score = score_fn(curr_node);
+				min_score = curr_score;
 				continue;
-			}
-			s64 curr_score = score_fn(curr_node);
-			if (curr_score < min_score) {
+			} else if (curr_score < min_score) {
 				min_score = curr_score;
 				min_node = curr_node;
 			}

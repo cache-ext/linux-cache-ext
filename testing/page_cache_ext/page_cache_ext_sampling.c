@@ -136,6 +136,14 @@ int main(int argc, char **argv)
 	getchar();
 
 	// Exit
+	// Unpin scan_pids map
+	ret = bpf_map__unpin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
+	if (ret < 0) {
+		fprintf(stderr, "Failed to unpin scan_pids map: %s\n",
+			strerror(errno));
+		page_cache_ext_sampling_bpf__destroy(skel);
+		return 1;
+	}
 	bpf_link__destroy(link);
 	page_cache_ext_sampling_bpf__destroy(skel);
 	return 0;

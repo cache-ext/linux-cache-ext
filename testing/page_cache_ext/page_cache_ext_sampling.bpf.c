@@ -35,13 +35,14 @@ struct folio_metadata {
 	u64 accesses;
 	u64 last_access_time;
 	bool touched_by_scan;
+	bool touched_by_nonscan;
 };
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, __u64);
 	__type(value, struct folio_metadata);
-	__uint(max_entries, 1248576);
+	__uint(max_entries, 3000000);
 } folio_metadata_map SEC(".maps");
 
 struct {
@@ -63,19 +64,27 @@ struct {
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, char[MAX_STAT_NAME_LEN]);
-	__type(value, u64);
+	__type(value, s64);
 	__uint(max_entries, 256);
 } stats SEC(".maps");
 
 // Keys for stats
 char STAT_SCAN_PAGES[MAX_STAT_NAME_LEN] = "scan_pages";
 char STAT_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "total_pages";
+char STAT_EVICTED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "evicted_scan_pages";
+char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 
 /* Counter for list size */
 __u64 list_size = 0;
 
-inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], u64 delta) {
+inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
+	// bpf_printk("update_stat!\n");
 	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
+	if (!counter) {
+		u64 zero = 0;
+		bpf_map_update_elem(&stats, stat_name, &zero, BPF_NOEXIST);
+		counter = bpf_map_lookup_elem(&stats, stat_name);
+	}
 	if (counter) {
 		__sync_fetch_and_add(counter, delta);
 	}
@@ -95,15 +104,24 @@ inline u64 get_sampling_list()
 inline bool is_folio_relevant(struct folio *folio)
 {
 	if (!folio) {
+		// bpf_printk("folio not relevant because it's null\n");
 		return false;
 	}
 	if (folio->mapping == NULL) {
+		// bpf_printk("folio not relevant because it's mapping is null\n");
 		return false;
 	}
 	if (folio->mapping->host == NULL) {
+		// bpf_printk("folio not relevant because it's host is null\n");
 		return false;
 	}
-	return inode_in_watchlist(folio->mapping->host->i_ino);
+	bool res = inode_in_watchlist(folio->mapping->host->i_ino);
+	// if (!res) {
+	// 	bpf_printk("folio not relevant because it's inode is not in watchlist, inode %llu\n",
+	// 		   folio->mapping->host->i_ino);
+
+	// }
+	return res;
 }
 
 // SEC("struct_ops.s/sampling_init")
@@ -162,7 +180,8 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	// Create folio metadata
 	u64 key = (u64)folio;
 	struct folio_metadata new_meta = { .accesses = 1,
-									   .touched_by_scan = touched_by_scan };
+									   .touched_by_scan = touched_by_scan,
+									   .touched_by_nonscan = !touched_by_scan };
 	new_meta.last_access_time = bpf_ktime_get_ns();
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
@@ -192,8 +211,11 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 			return;
 		}
 	}
+	bool touched_by_scan = is_scanning_pid();
 	__sync_fetch_and_add(&meta->accesses, 1);
 	meta->last_access_time = bpf_ktime_get_ns();
+	meta->touched_by_scan = touched_by_scan;
+	meta->touched_by_nonscan = !touched_by_scan;
 }
 
 void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
@@ -213,8 +235,10 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 	// Update stats
 	if (touched_by_scan) {
 		update_stat(&STAT_SCAN_PAGES, -1);
+		update_stat(&STAT_EVICTED_SCAN_PAGES, 1);
 	}
 	update_stat(&STAT_TOTAL_PAGES, -1);
+	update_stat(&STAT_EVICTED_TOTAL_PAGES, 1);
 
 }
 
@@ -297,12 +321,14 @@ static s64 bpf_lfu_with_scans_score_fn(struct cache_ext_list_node *a)
 	// In leveldb, the index block is at the end of the file.
 	bool is_last_page = is_last_page_in_file(a->folio);
 	bool touched_by_scan = meta_a->touched_by_scan;
+	bool touched_by_nonscan = meta_a->touched_by_nonscan;
 	if (is_last_page) {
 		// bpf_printk("page_cache_ext: Found last page in file\n");
 		score += 100000;
-	} else if (touched_by_scan) {
-		bpf_printk("page_cache_ext: Found page in scan\n");
-		score -= 10000;
+	} else if (touched_by_scan && !touched_by_nonscan) {
+		// bpf_printk("page_cache_ext: Found page in scan\n");
+		score -= 100000;
+		// bpf_printk("page_cache_ext: Scan page score: %lld\n", score);
 	}
 	return score;
 }
