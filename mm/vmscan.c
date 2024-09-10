@@ -6491,10 +6491,13 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	if (nr_to_evict > 0) reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
 	// TODO: Check the nr_reclaimed is less than nr_to_evict
 	if (reclaim_pct > threshold_pct) {
+		dbg_printk("Reclaimed more than %llu%% of the pages we wanted to evict. Finishing reclaim.\n", threshold_pct);
 		blk_finish_plug(&plug);
 		sc->nr_reclaimed += nr_reclaimed;
 		sc->nr_scanned += nr_reclaimed;
 		return;
+	} else {
+		pr_warn("Reclaimed less than %llu%% of the pages we wanted to evict. Reclaiming more.\n", threshold_pct);
 	}
 	/***********************************************************************/
 

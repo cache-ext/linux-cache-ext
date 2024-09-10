@@ -10,10 +10,38 @@ import subprocess
 
 from time import sleep
 from typing import Dict
+from ruamel.yaml import YAML
 from contextlib import suppress
+from contextlib import contextmanager
+
 
 log = logging.getLogger(__name__)
 GiB = 2**30
+
+
+@contextmanager
+def edit_yaml_file(file_path):
+    """
+    Context manager for editing YAML files while preserving formatting.
+
+    Usage:
+    with edit_yaml_file('path/to/file.yaml') as data:
+        data['key'] = 'new_value'
+    """
+    yaml = YAML()
+    yaml.preserve_quotes = True
+
+    try:
+        with open(file_path, 'r') as file:
+            data = yaml.load(file)
+    except FileNotFoundError:
+        data = {}
+
+    yield data
+
+    with open(file_path, 'w') as file:
+        yaml.dump(data, file)
+
 
 
 def run_command_with_live_output(command, **kwargs):
@@ -127,10 +155,11 @@ def disable_swap():
     run(["sudo", "swapoff", "-a"])
 
 
-def reset_database():
+def reset_database(db_dir: str, temp_db_dir: str):
     # rsync -avpl --delete /mydata/leveldb_db_orig/ /mydata/leveldb_db/
-    run(["rsync", "-avpl", "--delete", "/mydata/leveldb_db/",
-         "/mydata/leveldb_db_temp"])
+    if not db_dir.endswith("/"):
+        db_dir += "/"
+    run(["rsync", "-avpl", "--delete", db_dir, temp_db_dir])
 
 
 def load_json(path: str):
@@ -281,19 +310,42 @@ def parse_args():
         default="/mydata/leveldb_db",
         help="Specify the directory to watch for cache_ext",
     )
+    parser.add_argument(
+        "--leveldb-temp-db",
+        type=str,
+        default=None,
+        help="Specify the temporary directory for LevelDB benchmarking. Default is <leveldb-db>_temp",
+    )
+    parser.add_argument(
+        "--policy-loader",
+        type=str,
+        default="./page_cache_ext_sampling.out",
+        help="Specify the path to the policy loader binary",
+    )
     return parser.parse_args()
 
 
 def main():
+    global log
+    logging.basicConfig(level=logging.INFO)
     args = parse_args()
     bench_binary_dir = "/mydata/My-YCSB/build"
     leveldb_db_dir = os.path.realpath(args.leveldb_db)
     cgroup_size_in_bytes = 3 * GiB
 
+    policy_loader_binary = args.policy_loader
+    log.info("Policy loader binary: %s", policy_loader_binary)
+
     # Sanity check that dir exists
     if not os.path.exists(leveldb_db_dir):
         raise Exception("LevelDB DB directory not found: %s" % leveldb_db_dir)
     log.info("LevelDB DB directory: %s", leveldb_db_dir)
+
+    # Default temp dir is db dir + _temp
+    leveldb_temp_db_dir = args.leveldb_temp_db
+    if leveldb_temp_db_dir is None:
+        leveldb_temp_db_dir = leveldb_db_dir + "_temp"
+    log.info("LevelDB temp DB directory: %s", leveldb_temp_db_dir)
 
     disable_swap()
     disable_smt()
@@ -303,22 +355,21 @@ def main():
     if os.path.exists(results_file):
         all_results = load_json(results_file)
 
-    policy_loader_binary = "./page_cache_ext_sampling.out"
     if not os.path.exists(policy_loader_binary):
         raise Exception("Policy loader binary not found: %s" %
                         policy_loader_binary)
     cache_ext_policy = CacheExtPolicy("cache_ext_test", policy_loader_binary,
-                                      leveldb_db_dir)
+                                      leveldb_temp_db_dir)
 
     CLEANUP_TASKS.append(lambda: cache_ext_policy.stop())
     num_iterations = 1
     for enable_mmap in [False]:
-        for benchmark in ["ycsb_c"]:
+        for benchmark in ["ycsb_c_big"]:
         # for benchmark in ["ycsb_c", "mixed_get_scan"]:
             # for cgroup_size_in_bytes in [3*GiB, 5*GiB, 10*GiB]:
-            for cgroup_size_in_bytes in [20*GiB]:
+            for cgroup_size_in_bytes in [10*GiB]:
                 # for cgroup in ["cache_ext_test", "baseline_test"]:
-                for cgroup in ["baseline_test"]:
+                for cgroup in ["cache_ext_test"]:
                     for i in range(num_iterations):
                         if cgroup == "cache_ext_test":
                             recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size_in_bytes)
@@ -326,7 +377,7 @@ def main():
                             recreate_baseline_cgroup(limit_in_bytes=cgroup_size_in_bytes)
                         log.info("Running iteration %d with cgroup %s", i, cgroup)
                         # Reset the environment
-                        reset_database()
+                        reset_database(leveldb_db_dir, leveldb_temp_db_dir)
                         drop_page_cache()
                         sleep(2)
                         if cgroup == "cache_ext_test":
@@ -338,7 +389,13 @@ def main():
                             cmd_env["ENABLE_BPF_SCAN_MAP"] = "1"
                         if enable_mmap:
                             cmd_env["LEVELDB_MAX_MMAPS"] = "10000"
+                        # Edit bench file with our settings
                         bench_file = "../leveldb/config/%s.yaml" % benchmark
+                        bench_file = os.path.abspath(os.path.join(bench_binary_dir, bench_file))
+                        if not os.path.exists(bench_file):
+                            raise Exception("Benchmark file not found: %s" % bench_file)
+                        with edit_yaml_file(bench_file) as bench_config:
+                            bench_config["leveldb"]["data_dir"] = leveldb_temp_db_dir
                         cmd = ["taskset", "-c", "0-5",
                             "sudo", "cgexec", "-g", "memory:%s" % cgroup,
                             "./run_leveldb", bench_file]

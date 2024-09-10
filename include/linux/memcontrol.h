@@ -78,7 +78,9 @@ struct mem_cgroup_reclaim_cookie {
  * Value: Nothing, we just want to check for existence.
  */
 
-#define VALID_FOLIOS_SET_SIZE_POW 22
+// Support up to 20 GiB of memory
+// Each bucket represents 4KiB of memory.
+#define VALID_FOLIOS_SET_SIZE_POW 23
 #define VALID_FOLIOS_SET_SIZE (1 << VALID_FOLIOS_SET_SIZE_POW)
 
 struct valid_folios_set {
