@@ -1385,6 +1385,12 @@ struct page_cache_ext_eviction_ctx {
 	s64 scores[32];
 };
 
+struct cache_ext_admission_ctx {
+	u64 ino;
+	u64 offset;
+	u64 size;
+};
+
 // TODO: How can I make only some fields page_cache_ext_eviction_ctx writeable?
 struct page_cache_ext_ops {
 	// Implement bpf_verifier_ops
@@ -1393,6 +1399,7 @@ struct page_cache_ext_ops {
 	void (*folio_added)(struct folio *folio);
 	void (*folio_accessed)(struct folio *folio);
 	void (*folio_evicted)(struct folio *folio);
+	bool (*admit_folio)(struct cache_ext_admission_ctx *ctx);
 	// TODO: Add name?
 };
 

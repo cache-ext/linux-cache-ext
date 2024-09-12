@@ -8,19 +8,29 @@
 
 // extern struct bpf_struct_ops bpf_page_cache_ext_ops;
 static const struct btf_type *page_cache_ext_eviction_ctx_type;
+static const struct btf_type *cache_ext_admission_ctx_type;
 struct page_cache_ext_ops *page_cache_ext_ops = NULL;
 
 static int bpf_page_cache_ext_init(struct btf *btf)
 {
-	u32 type_id;
+	u32 eviction_type_id, admission_type_id;
 
-	type_id = btf_find_by_name_kind(btf, "page_cache_ext_eviction_ctx",
+	eviction_type_id = btf_find_by_name_kind(btf, "page_cache_ext_eviction_ctx",
 					BTF_KIND_STRUCT);
-	if (type_id < 0) {
+	if (eviction_type_id < 0) {
 		pr_err("page_cache_ext: failed to find struct page_cache_ext_eviction_ctx\n");
 		return -EINVAL;
 	}
-	page_cache_ext_eviction_ctx_type = btf_type_by_id(btf, type_id);
+
+	admission_type_id = btf_find_by_name_kind(btf, "cache_ext_admission_ctx",
+					BTF_KIND_STRUCT);
+	if (admission_type_id < 0) {
+		pr_err("page_cache_ext: failed to find struct cache_ext_admission_ctx\n");
+		return -EINVAL;
+	}
+	
+	page_cache_ext_eviction_ctx_type = btf_type_by_id(btf, eviction_type_id);
+	cache_ext_admission_ctx_type = btf_type_by_id(btf, admission_type_id);
 	return 0;
 }
 
@@ -62,6 +72,14 @@ static int bpf_page_cache_ext_btf_struct_access(struct bpf_verifier_log *log,
 	t = btf_type_by_id(reg->btf, reg->btf_id);
 	if (t == page_cache_ext_eviction_ctx_type) {
 		if (off + size > sizeof(struct page_cache_ext_eviction_ctx)) {
+			bpf_log(log,
+				"out of bounds access at off %d with size %d\n",
+				off, size);
+			return -EACCES;
+		}
+		return SCALAR_VALUE;
+	} else if (t == cache_ext_admission_ctx_type) {
+		if (off + size > sizeof(struct cache_ext_admission_ctx)) {
 			bpf_log(log,
 				"out of bounds access at off %d with size %d\n",
 				off, size);
