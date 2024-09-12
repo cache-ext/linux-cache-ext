@@ -279,7 +279,7 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		snipped_list_size++;
 	}
 	if (snipped_list_size < desired_snipped_list_size) {
-		pr_err("cache_ext: Not enough elements in the list. List has %d but want %lu\n",
+		pr_err("cache_ext: Not enough elements in the list. List has %d but want %d\n",
 			snipped_list_size, desired_snipped_list_size);
 		list_splice(&snipped_list, &list_ptr->head);
 		write_unlock(&registry->lock);

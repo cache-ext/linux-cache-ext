@@ -10,7 +10,7 @@
  *  Multiqueue VM started 5.8.00, Rik van Riel.
  */
 
-#include "linux/page-flags.h"
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/mm_types.h>

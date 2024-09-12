@@ -25,12 +25,6 @@
  * Copyright (C) 2020 Alibaba, Inc, Alex Shi
  */
 
-#include "linux/math.h"
-#include "linux/mm.h"
-#include "linux/nodemask.h"
-#include "linux/string.h"
-#include "linux/vmalloc.h"
-#include <linux/types.h>
 #include <linux/page_counter.h>
 #include <linux/memcontrol.h>
 #include <linux/cgroup.h>
