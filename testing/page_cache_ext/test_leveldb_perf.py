@@ -364,12 +364,12 @@ def main():
     CLEANUP_TASKS.append(lambda: cache_ext_policy.stop())
     num_iterations = 1
     for enable_mmap in [False]:
-        for benchmark in ["ycsb_c_big"]:
+        for benchmark in ["mixed_get_scan"]:
         # for benchmark in ["ycsb_c", "mixed_get_scan"]:
             # for cgroup_size_in_bytes in [3*GiB, 5*GiB, 10*GiB]:
             for cgroup_size_in_bytes in [10*GiB]:
                 # for cgroup in ["cache_ext_test", "baseline_test"]:
-                for cgroup in ["cache_ext_test"]:
+                for cgroup in ["cache_ext_test", "baseline_test"]:
                     for i in range(num_iterations):
                         if cgroup == "cache_ext_test":
                             recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size_in_bytes)
@@ -399,6 +399,7 @@ def main():
                         cmd = ["taskset", "-c", "0-5",
                             "sudo", "cgexec", "-g", "memory:%s" % cgroup,
                             "./run_leveldb", bench_file]
+                        log.info("Running command: %s", cmd)
                         # out = subprocess.check_output(cmd, cwd=bench_binary_dir,
                         #                               text=True, env=cmd_env)
                         out = run_command_with_live_output(

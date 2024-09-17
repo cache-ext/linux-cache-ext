@@ -1,0 +1,474 @@
+import os
+import re
+import sys
+import json
+import uuid
+import select
+import logging
+import argparse
+import subprocess
+
+from time import sleep
+from typing import Dict, List
+from ruamel.yaml import YAML
+from contextlib import suppress
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from subprocess import CalledProcessError
+
+
+GiB = 2**30
+log = logging.getLogger(__name__)
+
+DEFAULT_CACHE_EXT_CGROUP = "cache_ext_test"
+DEFAULT_BASELINE_CGROUP = "baseline_test"
+
+
+def format_bytes_str(bytes: int):
+    if bytes < 1024:
+        return f"{bytes} B"
+    elif bytes < 1024**2:
+        return f"{bytes / 1024:.1f} KiB"
+    elif bytes < 1024**3:
+        return f"{bytes / 1024**2:.1f} MiB"
+    else:
+        return f"{bytes / 1024**3:.1f} GiB"
+
+
+@contextmanager
+def edit_yaml_file(file_path):
+    """
+    Context manager for editing YAML files while preserving formatting.
+
+    Usage:
+    with edit_yaml_file('path/to/file.yaml') as data:
+        data['key'] = 'new_value'
+    """
+    yaml = YAML()
+    yaml.preserve_quotes = True
+
+    try:
+        with open(file_path, 'r') as file:
+            data = yaml.load(file)
+    except FileNotFoundError:
+        data = {}
+
+    yield data
+
+    with open(file_path, 'w') as file:
+        yaml.dump(data, file)
+
+
+def run_command_with_live_output(command, **kwargs):
+    # Default kwargs for Popen
+    popen_kwargs = {
+        'stdout': subprocess.PIPE,
+        'stderr': subprocess.PIPE,
+        'text': True,
+        'bufsize': 1,
+        'universal_newlines': True
+    }
+
+    # Update with any user-provided kwargs
+    popen_kwargs.update(kwargs)
+
+    process = subprocess.Popen(command, **popen_kwargs)
+
+    stdout_output = []
+    stderr_output = []
+
+    # Set stdout and stderr to non-blocking mode
+    for pipe in [process.stdout, process.stderr]:
+        if pipe:
+            os.set_blocking(pipe.fileno(), False)
+
+    while True:
+        ready_to_read, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+
+        for pipe in ready_to_read:
+            if pipe == process.stdout:
+                line = process.stdout.readline()
+                if line:
+                    print(line.strip())
+                    stdout_output.append(line)
+            elif pipe == process.stderr:
+                line = process.stderr.readline()
+                if line:
+                    print(line.strip(), file=sys.stderr)
+                    stderr_output.append(line)
+
+        if process.poll() is not None:
+            break
+
+    # Read any remaining output
+    for pipe in [process.stdout, process.stderr]:
+        if pipe:
+            remaining_output = pipe.read()
+            if remaining_output:
+                print(remaining_output.strip(), file=sys.stderr if pipe == process.stderr else sys.stdout)
+                (stderr_output if pipe == process.stderr else stdout_output).append(remaining_output)
+
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, command, ''.join(stdout_output), ''.join(stderr_output))
+
+    return ''.join(stdout_output)
+
+
+def run(cmd, *args, **kwargs):
+    # Set check=True
+    kwargs['check'] = True
+    log.info("Running command: %s" % cmd)
+    return subprocess.run(cmd, *args, **kwargs)
+
+
+def check_output(cmd, *args, **kwargs):
+    log.info("Running command: %s" % cmd)
+    return subprocess.check_output(cmd, *args, **kwargs)
+
+
+def read_file(path: str):
+    with open(path, "r") as f:
+        return f.read().strip()
+
+
+def write_file(path: str, data: str):
+    with open(path, "w") as f:
+        f.write(data)
+
+
+def enable_cache_ext_for_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP):
+    # echo -n "/cache_ext_test" > /proc/page_cache_ext_enabled_cgroup
+    run(["echo", "-n", "/%s" % cgroup, ">",
+         "/proc/page_cache_ext_enabled_cgroup"])
+
+
+def delete_cgroup(cgroup):
+    with suppress(subprocess.CalledProcessError):
+        run(["sudo", "cgdelete", f"memory:{cgroup}"])
+
+
+def recreate_cache_ext_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP,
+                              limit_in_bytes=2*GiB):
+    delete_cgroup(cgroup)
+    # Create cache_ext cgroup
+    run(["sudo", "cgcreate", "-g", f"memory:{cgroup}"])
+
+    # Set memory limit for cache_ext cgroup
+    run(["sudo", "sh", "-c",
+         "echo %d > /sys/fs/cgroup/%s/memory.max"
+         % (limit_in_bytes, cgroup)])
+
+    # Enable page cache extension for cache_ext cgroup
+    run(["sudo", "sh", "-c",
+         "echo -n '/%s' > /proc/page_cache_ext_enabled_cgroup" % cgroup])
+
+
+def recreate_baseline_cgroup(cgroup=DEFAULT_BASELINE_CGROUP,
+                             limit_in_bytes=2*GiB):
+    delete_cgroup(cgroup)
+    # Create baseline cgroup
+    run(["sudo", "cgcreate", "-g", f"memory:{cgroup}"])
+
+    # Set memory limit for baseline cgroup
+    run(["sudo", "sh", "-c",
+         "echo %d > /sys/fs/cgroup/%s/memory.max" % (limit_in_bytes, cgroup)])
+
+
+def drop_page_cache():
+    run(["sudo", "sync"])
+    run(["sudo", "sh", "-c", "echo 1 > /proc/sys/vm/drop_caches"])
+
+
+def disable_swap():
+    run(["sudo", "swapoff", "-a"])
+
+
+def disable_smt():
+    run(["sudo", "sh", "-c", "echo off > /sys/devices/system/cpu/smt/control"])
+
+
+def reset_database(db_dir: str, temp_db_dir: str):
+    # rsync -avpl --delete /mydata/leveldb_db_orig/ /mydata/leveldb_db/
+    if not db_dir.endswith("/"):
+        db_dir += "/"
+    run(["rsync", "-avpl", "--delete", db_dir, temp_db_dir])
+
+
+def load_json(path: str):
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def save_json(path: str, data):
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=4)
+    os.rename(tmp_path, path)
+
+# Helerp
+
+##########################
+# Benchmarking framework #
+##########################
+
+
+class ToJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if hasattr(obj, "to_json"):
+            return obj.to_json()
+        return json.JSONEncoder.default(self, obj)
+
+
+class BenchResults:
+    def __init__(self, results: Dict) -> None:
+        self.__dict__.update(results)
+
+    def to_json(self):
+        return self.__dict__
+
+    @classmethod
+    def from_json(cls, json_dict: Dict):
+        return cls(json_dict)
+
+
+class BenchRun:
+    def __init__(self, config: Dict, results: BenchResults):
+        self.config = config
+        self.results = results
+
+    def __eq__(self, other: object) -> bool:
+        return self.config == other.config
+
+    def to_json(self):
+        return self.__dict__
+
+
+def parse_results_file(results_file: str, benchresults_cls) -> BenchRun:
+    with open(results_file, "r") as f:
+        results = json.load(f)
+    return [BenchRun(r["config"], benchresults_cls.from_json(r["results"])) for r in results]
+
+
+def exists_config_in_results(results: List[BenchRun], config: Dict) -> bool:
+    for r in results:
+        if r.config == config:
+            return True
+    return False
+
+
+def single_result_select(results: List[BenchRun], config_match: Dict) -> BenchRun:
+    # Select results based on partial config match
+    matches = [r for r in results
+               if config_match.items() <= r.config.items()]
+    if len(matches) != 1:
+        raise Exception("Expected exactly one match, got %s for config_match"
+                        " %s" % (len(matches), config_match))
+    return matches[0]
+
+
+def add_config_option(name: str, values: List, configs: List[Dict]) -> List[Dict]:
+    new_configs = []
+    for config in configs:
+        for value in values:
+            new_config = config.copy()
+            new_config[name] = value
+            new_configs.append(new_config)
+    return new_configs
+
+
+def unique_configs_for_keys(configs: List[Dict], keys: List[str]) -> List[Dict]:
+    # Return the unique configs for the given keys
+    unique_configs = []
+    for config in configs:
+        unique_config = {}
+        for key in keys:
+            unique_config[key] = config[key]
+        if unique_config not in unique_configs:
+            unique_configs.append(unique_config)
+    return unique_configs
+
+
+def checkpoint_results(results_file: str, results: BenchRun):
+    temp_results_file = results_file + ".tmp"
+    with open(temp_results_file, "w") as f:
+        f.write(json.dumps(results, cls=ToJSONEncoder, indent=4))
+    os.rename(temp_results_file, results_file)
+
+
+class BenchmarkFramework(ABC):
+    """Simple benchmarking framework.
+
+    Subclass it to implement a benchmark. You need to implement the abstract
+    methods."""
+
+    def __init__(self, name: str, benchresults_cls=BenchResults,
+                 cli_args=None):
+        self.name = name
+        self.benchresults_cls = benchresults_cls
+        self.args = cli_args
+
+    def benchmark_prepare(self, config):
+        pass
+
+    @abstractmethod
+    def benchmark_cmd(self, config):
+        raise NotImplementedError
+
+    def cmd_extra_envs(self, config):
+        return {}
+
+    def before_benchmark(self, config):
+        pass
+
+    def after_benchmark(self, config):
+        pass
+
+    @abstractmethod
+    def parse_results(self, stdout: str) -> BenchResults:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_arguments(self, parser: argparse.ArgumentParser):
+        raise NotImplementedError
+
+    def generate_configs(self, configs: List[Dict]) -> List[Dict]:
+        return configs
+
+    def parse_args(self):
+        parser = argparse.ArgumentParser("Benchmark %s" % self.name,
+                                         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        parser.add_argument("--cpu", type=str, default="1",
+                            help="Number of CPUs to use. Can be a value, a"
+                                 " range, or a list of comma-separated values"
+                                 " and ranges")
+        parser.add_argument("--results-file", type=str, default="results.json",
+                            help="Path to results file (JSON format)")
+        # parser.add_argument("--runtime", type=int, default=60,
+        #                     help="Runtime in seconds for each benchmark")
+        parser.add_argument("--no-reuse-results", action="store_false",
+                            default=True,
+                            help="Reuse existing results and only calculate"
+                            " missing results")
+        parser.add_argument("--debug-segfault", action="store_true",
+                            default=False, help="Debug segfaults")
+        self.add_arguments(parser)
+        return parser.parse_args()
+
+    def benchmark(self):
+        if not self.args:
+            args = self.parse_args()
+            self.args = args
+        results_file = self.args.results_file
+        reuse_results = not self.args.no_reuse_results
+        cpu_str = self.args.cpu
+
+        # Parse CPU string
+        cpu_amounts = parse_numbers_string(cpu_str)
+        log.info("Will benchmark with each of the following amounts of CPU %s"
+                 % cpu_amounts)
+
+        i = 1
+        results = []
+        while os.path.exists(results_file):
+            if reuse_results:
+                log.info("Will reuse existing results file %s" % results_file)
+                results = parse_results_file(
+                    results_file, self.benchresults_cls)
+                break
+            if "." in results_file:
+                filename, ext = results_file.rsplit(".", 1)
+                results_file = filename + "_%s." % i + ext
+            else:
+                results_file = results_file + "_%s" % i
+        log.info("Will write results to %s" % results_file)
+
+        all_configs = []
+        for cpus in cpu_amounts:
+            new_configs = [
+                {
+                    "name": self.name,
+                    "cpus": cpus,
+                }
+            ]
+            new_configs = self.generate_configs(new_configs)
+            all_configs.extend(new_configs)
+
+        configs_to_run = []
+        for config in all_configs:
+            if reuse_results and exists_config_in_results(results, config):
+                log.info("Skipping config %s" % config)
+            else:
+                configs_to_run.append(config)
+
+        for idx, config in enumerate(configs_to_run):
+            log.info("Progress: %.1f%% (%s/%s)" %
+                     ((idx+1) / len(configs_to_run)*100, idx+1,
+                      len(configs_to_run)))
+            log.info("Running benchmark for %s with config %s" %
+                     (config["name"], config))
+
+            # Prepare environment for benchmarking
+            self.benchmark_prepare(config)
+
+            # Run benchmark
+            cmd = self.benchmark_cmd(config)
+
+            # Limit CPUs
+            cmd = ["taskset", "-c", "0-%s" % str(config["cpus"]-1)] + cmd
+
+            log.info("Running command: %s" % cmd)
+            env = os.environ
+            if self.args.debug_segfault:
+                env["SEGFAULT_SIGNALS"] = "abrt segv"
+                env["LD_PRELOAD"] = "/usr/lib/x86_64-linux-gnu/libSegFault.so"
+            extra_envs = self.cmd_extra_envs(config)
+            if extra_envs:
+                log.info("Adding extra envs: %s" % extra_envs)
+            env.update(extra_envs)
+            self.before_benchmark(config)
+            try:
+                stdout = check_output(cmd, encoding="utf-8", env=env)
+            except CalledProcessError as e:
+                log.error("Benchmark failed with error code %s" % e.returncode)
+                log.error("Output was: %s" % e.output)
+                raise e
+
+            self.after_benchmark(config)
+            # Save results
+            log.info("Parsing results...")
+            bench_run_results = self.parse_results(stdout)
+            bench_run = BenchRun(config, bench_run_results)
+            results.append(bench_run)
+            checkpoint_results(results_file, results)
+            sleep(5)
+        all_results = []
+        for config in all_configs:
+            all_results.append(single_result_select(results, config))
+        return all_results
+
+
+def parse_strings_string(s: str) -> List[str]:
+    parts = s.split(",")
+    res = []
+    for part in parts:
+        part = part.strip()
+        if part:
+            res.append(part)
+    return res
+
+
+def parse_numbers_string(num_string: str) -> List[int]:
+    """Parse a string of comma-separated numbers and ranges into an int list."""
+    parts = num_string.split(",")
+    num_list = []
+    for part in parts:
+        if "-" in part:
+            start, end = part.split("-")
+            num_list.extend(list(range(int(start), int(end) + 1)))
+        else:
+            num_list.append(int(part))
+    return sorted(list(set(num_list)))
+
+
+def parse_cpu_string(cpu_string: str):
+    return parse_numbers_string(cpu_string)

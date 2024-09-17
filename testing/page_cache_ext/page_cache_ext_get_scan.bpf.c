@@ -71,6 +71,10 @@ char STAT_SCAN_PAGES[MAX_STAT_NAME_LEN] = "scan_pages";
 char STAT_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "total_pages";
 char STAT_EVICTED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "evicted_scan_pages";
 char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
+char STAT_INSERTED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "inserted_scan_pages";
+char STAT_INSERTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "inserted_total_pages";
+char STAT_ACCESSED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "accessed_scan_pages";
+char STAT_ACCESSED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "accessed_total_pages";
 
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
@@ -174,8 +178,10 @@ void BPF_STRUCT_OPS(mixed_folio_added, struct folio *folio)
 
     // Stats
 	update_stat(&STAT_TOTAL_PAGES, 1);
+	update_stat(&STAT_INSERTED_TOTAL_PAGES, 1);
 	if (touched_by_scan) {
 		update_stat(&STAT_SCAN_PAGES, 1);
+		update_stat(&STAT_INSERTED_SCAN_PAGES, 1);
 	}
 
 	// Create folio metadata
@@ -231,6 +237,10 @@ void BPF_STRUCT_OPS(mixed_folio_accessed, struct folio *folio)
     //     bpf_cache_ext_list_add(sampling_list, folio);
     // }
 
+	update_stat(&STAT_ACCESSED_TOTAL_PAGES, 1);
+	if (meta->touched_by_scan) {
+		update_stat(&STAT_ACCESSED_SCAN_PAGES, 1);
+	}
 	__sync_fetch_and_add(&meta->accesses, 1);
 	meta->last_access_time = bpf_ktime_get_ns();
 	// meta->touched_by_scan = touched_by_scan;

@@ -32,6 +32,33 @@ def print_bpf_stats(current, previous):
     evicted_scan_diff = current['evicted_scan_pages'] - previous.get('evicted_scan_pages', current['evicted_scan_pages'])
     evicted_total_diff = current['evicted_total_pages'] - previous.get('evicted_total_pages', current['evicted_total_pages'])
 
+    inserted_scan_diff = current['inserted_scan_pages'] - previous.get('inserted_scan_pages', current['inserted_scan_pages'])
+    inserted_total_diff = current['inserted_total_pages'] - previous.get('inserted_total_pages', current['inserted_total_pages'])
+
+    accessed_scan_diff = current['accessed_scan_pages'] - previous.get('accessed_scan_pages', current['accessed_scan_pages'])
+    accessed_total_diff = current['accessed_total_pages'] - previous.get('accessed_total_pages', current['accessed_total_pages'])
+
+    # Calculate hit ratio for scan pages and non-scan pages
+    scan_total = accessed_scan_diff
+    scan_misses = inserted_scan_diff
+    scan_hits = scan_total - scan_misses
+    scan_hit_ratio = scan_hits / scan_total if scan_total > 0 else 0
+
+    non_scan_total = accessed_total_diff - accessed_scan_diff
+    non_scan_misses = inserted_total_diff - inserted_scan_diff
+    non_scan_hits = non_scan_total - non_scan_misses
+    non_scan_hit_ratio = non_scan_hits / non_scan_total if non_scan_total > 0 else 0
+
+    print(f"Scan pages hit ratio: {scan_hit_ratio:.2%}")
+    print(f"Non-scan pages hit ratio: {non_scan_hit_ratio:.2%}")
+
+
+    print(f"accessed_scan_pages diff: {accessed_scan_diff}")
+    print(f"accessed_total_pages diff: {accessed_total_diff}")
+
+    print(f"inserted_scan_pages diff: {inserted_scan_diff}")
+    print(f"inserted_total_pages diff: {inserted_total_diff}")
+
     print(f"evicted_scan_pages diff: {evicted_scan_diff}")
     print(f"evicted_total_pages diff: {evicted_total_diff}")
     print("---")
