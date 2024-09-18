@@ -1,5 +1,6 @@
 import sys
 import json
+import psutil
 from typing import Dict, List
 import logging
 import argparse
@@ -20,7 +21,7 @@ class FioBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
-        configs = add_config_option("iteration", [1, 2, 3], configs)
+        configs = add_config_option("iteration", list(range(1, 10)), configs)
         configs = add_config_option("workload", ["randread"], configs)
         configs = add_config_option("runtime_seconds", [60], configs)
         configs = add_config_option("nr_threads", [8], configs)
@@ -46,6 +47,10 @@ class FioBenchmark(BenchmarkFramework):
         else:
             recreate_baseline_cgroup(limit_in_bytes=config["cgroup_size"])
 
+    def before_benchmark(self, config):
+        log.info("Startin to measure CPU usage")
+        psutil.cpu_percent()
+
     def benchmark_cmd(self, config):
         cmd = [
             "sudo",
@@ -66,14 +71,17 @@ class FioBenchmark(BenchmarkFramework):
         ]
         return cmd
 
+    def after_benchmark(self, config):
+        log.info("Stopping CPU usage measurement")
+        self.cpu_usage = psutil.cpu_percent()
+        log.info("Deleting cgroup %s", config["cgroup_name"])
+        delete_cgroup(config["cgroup_name"])
+
     def parse_results(self, stdout: str) -> BenchResults:
         # parse fio output
         fio_results = json.loads(stdout)
+        fio_results["cpu_usage"] = self.cpu_usage
         return BenchResults(fio_results)
-
-    def after_benchmark(self, config):
-        log.info("Deleting cgroup %s", config["cgroup_name"])
-        delete_cgroup(config["cgroup_name"])
 
 
 def main():

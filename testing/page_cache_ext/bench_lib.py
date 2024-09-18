@@ -3,18 +3,19 @@ import re
 import sys
 import json
 import uuid
+import psutil
 import select
 import logging
 import argparse
 import subprocess
 
-from time import sleep
-from typing import Dict, List
+from time import sleep, time
 from ruamel.yaml import YAML
 from contextlib import suppress
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from subprocess import CalledProcessError
+from typing import Dict, List, Tuple, Union
 
 
 GiB = 2**30
@@ -62,11 +63,11 @@ def edit_yaml_file(file_path):
 def run_command_with_live_output(command, **kwargs):
     # Default kwargs for Popen
     popen_kwargs = {
-        'stdout': subprocess.PIPE,
-        'stderr': subprocess.PIPE,
-        'text': True,
-        'bufsize': 1,
-        'universal_newlines': True
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "bufsize": 1,
+        "universal_newlines": True
     }
 
     # Update with any user-provided kwargs
@@ -223,6 +224,12 @@ class BenchResults:
     def __init__(self, results: Dict) -> None:
         self.__dict__.update(results)
 
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, value):
+        self.__dict__[key] = value
+
     def to_json(self):
         return self.__dict__
 
@@ -305,7 +312,10 @@ class BenchmarkFramework(ABC):
                  cli_args=None):
         self.name = name
         self.benchresults_cls = benchresults_cls
-        self.args = cli_args
+        if cli_args:
+            self.args = cli_args
+        else:
+            self.args = self.parse_args()
 
     def benchmark_prepare(self, config):
         pass
@@ -355,9 +365,6 @@ class BenchmarkFramework(ABC):
         return parser.parse_args()
 
     def benchmark(self):
-        if not self.args:
-            args = self.parse_args()
-            self.args = args
         results_file = self.args.results_file
         reuse_results = not self.args.no_reuse_results
         cpu_str = self.args.cpu
@@ -472,3 +479,10 @@ def parse_numbers_string(num_string: str) -> List[int]:
 
 def parse_cpu_string(cpu_string: str):
     return parse_numbers_string(cpu_string)
+
+
+prev_cpu_stats = {
+    "idle": 0.0,
+    "iowait": 0.0,
+    "total": 0.0
+}

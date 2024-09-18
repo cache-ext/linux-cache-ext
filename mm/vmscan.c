@@ -6497,7 +6497,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 		sc->nr_scanned += nr_reclaimed;
 		return;
 	} else {
-		pr_warn("Reclaimed less than %llu%% of the pages we wanted to evict. Reclaiming more.\n", threshold_pct);
+		pr_debug("Reclaimed less than %llu%% of the pages we wanted to evict. Reclaiming more.\n", threshold_pct);
 	}
 	/***********************************************************************/
 
