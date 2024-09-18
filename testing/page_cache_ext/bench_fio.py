@@ -26,7 +26,7 @@ class FioBenchmark(BenchmarkFramework):
         configs = add_config_option("runtime_seconds", [60], configs)
         configs = add_config_option("nr_threads", [8], configs)
         configs = add_config_option(
-            "cgroup_size", [5 * GiB, 10 * GiB, 20 * GiB], configs
+            "cgroup_size", [5 * GiB, 10 * GiB, 20 * GiB, 30 * GiB], configs
         )
         configs = add_config_option(
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs

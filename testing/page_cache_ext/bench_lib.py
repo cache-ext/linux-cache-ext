@@ -355,8 +355,8 @@ class BenchmarkFramework(ABC):
                             help="Path to results file (JSON format)")
         # parser.add_argument("--runtime", type=int, default=60,
         #                     help="Runtime in seconds for each benchmark")
-        parser.add_argument("--no-reuse-results", action="store_false",
-                            default=True,
+        parser.add_argument("--no-reuse-results", action="store_true",
+                            default=False,
                             help="Reuse existing results and only calculate"
                             " missing results")
         parser.add_argument("--debug-segfault", action="store_true",
@@ -382,6 +382,7 @@ class BenchmarkFramework(ABC):
                 results = parse_results_file(
                     results_file, self.benchresults_cls)
                 break
+            log.info("Not reusing results file %s" % results_file)
             if "." in results_file:
                 filename, ext = results_file.rsplit(".", 1)
                 results_file = filename + "_%s." % i + ext
