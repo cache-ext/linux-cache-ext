@@ -356,7 +356,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	struct sampling_options sampling_opts = {
 		.sample_size = 10,
 	};
-	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_with_scans_score_fn,
+	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);
 	dbg_printk("page_cache_ext: Evicting %d pages (%d requested)\n",
 			   eviction_ctx->nr_folios_to_evict,

@@ -8,7 +8,7 @@ import logging
 from typing import Dict, List, Tuple, Callable
 from matplotlib import pyplot as plt
 import numpy as np
-from bench_lib import BenchRun
+from bench_lib import BenchRun, BenchResults, DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP
 
 
 log = logging.getLogger(__name__)
@@ -156,3 +156,101 @@ def plot_groupped_bars(
     plt.tight_layout()
     plt.savefig(output, metadata={"creationDate": None})
     plt.clf()
+
+
+def make_name(config: Dict) -> str:
+    if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
+        return "Baseline"
+    elif config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
+        return "cache_ext"
+    return "<unknown>"
+
+
+def leveldb_plot_ycsb_results(config_matches: List[Dict],
+                              results: List[BenchRun],
+                              colors=["salmon", "maroon", "peru"],
+                              filename="leveldb_ycsb.pdf",
+                              name_func=make_name,
+                              bench_types=["uniform", "uniform_read_write",
+                                           "ycsb_a", "ycsb_b", "ycsb_c",
+                                           "ycsb_d", "ycsb_f"],
+                              result_select_fn=lambda r: r["throughput_avg"],
+                              ylimit=None, hide_y_ticks=False,
+                              measurement_rotation=90,
+                              measurement_fontsize=12,
+                              fontsize=12,
+                              legend_fontsize=12,
+                              measurement_offset=1000,
+                              bar_width=1,
+                              group_newline=True,
+                              label_fontsize=None,
+                              legend_loc='best'):
+    """Plot YCSB results for RocksDB.
+
+    Config match dicts should look like this:
+        {
+            "name": "rocksdb_disk",
+            "disk_type": "nvmeof_tcp",
+            "cpus": 3,
+            "threads_per_core": 10,
+            "cache_size": 1000000000,
+            "use_bpfof": False,
+            "bench_type": "ycsb_a",
+        }
+    """
+    if group_newline:
+        bench_type_to_group = {
+            "uniform": "Unif.\n(100/0)",
+            "uniform_read_write": "Unif.\n(50/50)",
+            "ycsb_a": "YCSB\nA",
+            "ycsb_b": "YCSB\nB",
+            "ycsb_c": "YCSB\nC",
+            "ycsb_d": "YCSB\nD",
+            "ycsb_f": "YCSB\nF",
+            "trace19": "Twitter\n19",
+            "trace37": "Twitter\n37",
+        }
+    else:
+        bench_type_to_group = {
+            "uniform": "Unif. (100/0)",
+            "uniform_read_write": "Unif. (50/50)",
+            "ycsb_a": "YCSB A",
+            "ycsb_b": "YCSB B",
+            "ycsb_c": "YCSB C",
+            "ycsb_d": "YCSB D",
+            "ycsb_f": "YCSB F",
+            "trace19": "Twitter 19",
+            "trace37": "Twitter 37",
+        }
+
+    groups = [bench_type_to_group[bench_type] for bench_type in bench_types]
+    names = []
+    y_values = []
+
+    for config_match in config_matches:
+        names.append(name_func(config_match))
+        ys = []
+
+        for bench_type in bench_types:
+            config_match["benchmark"] = bench_type
+            y_res = results_select(results, config_match, result_select_fn)
+            print(config_match)
+            print(y_res)
+            assert len(y_res) == 1, "len(y_res) = %d" % len(y_res)
+            ys.append(y_res[0])
+        assert len(ys) == len(groups), "len(ys) = %d" % len(ys)
+        y_values.append(ys)
+
+    print(y_values)
+    print(names)
+
+    gpplot = GrouppedBarPlot(names, y_values, groups, colors,
+                             y_label="Total Throughput (req/sec)")
+    assert gpplot.num_bars == len(colors), "gpplot.num_bars = %d, len(colors) = %d" % (gpplot.num_bars, len(colors))
+
+    plot_groupped_bars(gpplot, filename,
+                       measurement_offset=measurement_offset, bar_width=bar_width,
+                       measurement_fontsize=measurement_fontsize, measurement_rotation=measurement_rotation,
+                       ylimit=ylimit, hide_y_ticks=hide_y_ticks, fontsize=fontsize, legend_fontsize=legend_fontsize,
+                       label_fontsize=label_fontsize,
+                       legend_loc=legend_loc)

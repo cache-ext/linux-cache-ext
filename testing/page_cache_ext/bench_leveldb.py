@@ -125,6 +125,7 @@ class CacheExtPolicy:
             raise Exception("Policy already started")
         self.has_started = True
         cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
+        log.info("Starting policy thread: %s", cmd)
         self._policy_thread = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
@@ -153,6 +154,8 @@ class LevelDBBenchmark(BenchmarkFramework):
 
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
         super().__init__("leveldb_benchmark", benchresults_cls, cli_args)
+        if self.args.leveldb_temp_db is None:
+            self.args.leveldb_temp_db = self.args.leveldb_db + "_temp"
         self.cache_ext_policy = CacheExtPolicy(
             DEFAULT_CACHE_EXT_CGROUP, self.args.policy_loader, self.args.leveldb_temp_db
         )
@@ -186,16 +189,18 @@ class LevelDBBenchmark(BenchmarkFramework):
         parser.add_argument(
             "--benchmark",
             type=str,
-            default="ycsb_a,ycsb_b,ycsb_c,ycsb_d,ycsb_f",
+            default="ycsb_a,ycsb_c",
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
         configs = add_config_option("enable_mmap", [False], configs)
+        configs = add_config_option("runtime_seconds", [240], configs)
+        configs = add_config_option("warmup_runtime_seconds", [240], configs)
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
         configs = add_config_option(
-            "cgroup_size", [3 * GiB, 5 * GiB, 10 * GiB], configs
+            "cgroup_size", [5 * GiB, 10 * GiB], configs
         )
         configs = add_config_option(
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
@@ -215,20 +220,22 @@ class LevelDBBenchmark(BenchmarkFramework):
 
     def benchmark_cmd(self, config):
         bench_binary_dir = self.args.bench_binary_dir
-        leveldb_db_dir = os.path.realpath(self.args.leveldb_db)
         leveldb_temp_db_dir = self.args.leveldb_temp_db
+        bench_binary = os.path.join(bench_binary_dir, "run_leveldb")
         bench_file = "../leveldb/config/%s.yaml" % config["benchmark"]
         bench_file = os.path.abspath(os.path.join(bench_binary_dir, bench_file))
         if not os.path.exists(bench_file):
             raise Exception("Benchmark file not found: %s" % bench_file)
         with edit_yaml_file(bench_file) as bench_config:
             bench_config["leveldb"]["data_dir"] = leveldb_temp_db_dir
+            bench_config["workload"]["runtime_seconds"] = config["runtime_seconds"]
+            bench_config["workload"]["warmup_runtime_seconds"] = config["warmup_runtime_seconds"]
         cmd = [
             "sudo",
             "cgexec",
             "-g",
             "memory:%s" % config["cgroup_name"],
-            "./run_leveldb",
+            bench_binary,
             bench_file,
         ]
         return cmd
@@ -268,8 +275,6 @@ def main():
             "Benchmark binary directory not found: %s"
             % leveldb_bench.args.bench_binary_dir
         )
-    if leveldb_bench.args.leveldb_temp_db is None:
-        leveldb_bench.args.leveldb_temp_db = leveldb_bench.args.leveldb_db + "_temp"
     log.info("LevelDB DB directory: %s", leveldb_bench.args.leveldb_db)
     log.info("LevelDB temp DB directory: %s", leveldb_bench.args.leveldb_temp_db)
     leveldb_bench.benchmark()
@@ -277,6 +282,7 @@ def main():
 
 if __name__ == "__main__":
     try:
+        logging.basicConfig(level=logging.INFO)
         main()
     except Exception as e:
         log.error("Error in main: %s", e)
