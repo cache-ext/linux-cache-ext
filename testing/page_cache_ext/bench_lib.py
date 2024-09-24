@@ -6,6 +6,7 @@ import uuid
 import psutil
 import select
 import logging
+import resource
 import argparse
 import subprocess
 
@@ -24,6 +25,17 @@ log = logging.getLogger(__name__)
 DEFAULT_CACHE_EXT_CGROUP = "cache_ext_test"
 DEFAULT_BASELINE_CGROUP = "baseline_test"
 
+
+def ulimit(num_open_files: int):
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (num_open_files, num_open_files))
+    except ValueError as e:
+        log.warning(f"Failed to set ulimit to {num_open_files}: {e}")
+        log.warning("Current ulimit: %s", resource.getrlimit(resource.RLIMIT_NOFILE))
+        raise e
+    except Exception as e:
+        log.error(f"Unexpected error while setting ulimit: {e}")
+        raise e
 
 def format_bytes_str(bytes: int):
     if bytes < 1024:

@@ -5,10 +5,16 @@ import sys
 import json
 import logging
 
+from copy import deepcopy
 from typing import Dict, List, Tuple, Callable
 from matplotlib import pyplot as plt
 import numpy as np
-from bench_lib import BenchRun, BenchResults, DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP
+from bench_lib import (
+    BenchRun,
+    BenchResults,
+    DEFAULT_BASELINE_CGROUP,
+    DEFAULT_CACHE_EXT_CGROUP,
+)
 
 
 log = logging.getLogger(__name__)
@@ -19,6 +25,10 @@ def exists_config_in_results(results: List[BenchRun], config: Dict) -> bool:
         if r.config == config:
             return True
     return False
+
+
+def configs_select(results: List[BenchRun], config_match: Dict) -> List[Dict]:
+    return [config_match for r in results if config_match.items() <= r.config.items()]
 
 
 def results_select(
@@ -166,25 +176,47 @@ def make_name(config: Dict) -> str:
     return "<unknown>"
 
 
-def leveldb_plot_ycsb_results(config_matches: List[Dict],
-                              results: List[BenchRun],
-                              colors=["salmon", "maroon", "peru"],
-                              filename="leveldb_ycsb.pdf",
-                              name_func=make_name,
-                              bench_types=["uniform", "uniform_read_write",
-                                           "ycsb_a", "ycsb_b", "ycsb_c",
-                                           "ycsb_d", "ycsb_f"],
-                              result_select_fn=lambda r: r["throughput_avg"],
-                              ylimit=None, hide_y_ticks=False,
-                              measurement_rotation=90,
-                              measurement_fontsize=12,
-                              fontsize=12,
-                              legend_fontsize=12,
-                              measurement_offset=1000,
-                              bar_width=1,
-                              group_newline=True,
-                              label_fontsize=None,
-                              legend_loc='best'):
+def assert_only_differs_in_fields(configs: List[Dict], fields: List[str]):
+    copied_configs = [deepcopy(config) for config in configs]
+    # Remove the fields that we allow to differ
+    copied_configs = [
+        {k: v for k, v in config.items() if k not in fields}
+        for config in copied_configs
+    ]
+    for config in copied_configs:
+        assert (
+            copied_configs[0] == config
+        ), f"Configs differ in fields other than {fields}. Configs: {configs}"
+
+
+def leveldb_plot_ycsb_results(
+    config_matches: List[Dict],
+    results: List[BenchRun],
+    colors=["salmon", "maroon", "peru"],
+    filename="leveldb_ycsb.pdf",
+    name_func=make_name,
+    bench_types=[
+        "uniform",
+        "uniform_read_write",
+        "ycsb_a",
+        "ycsb_b",
+        "ycsb_c",
+        "ycsb_d",
+        "ycsb_f",
+    ],
+    result_select_fn=lambda r: r["throughput_avg"],
+    ylimit=None,
+    hide_y_ticks=False,
+    measurement_rotation=90,
+    measurement_fontsize=12,
+    fontsize=12,
+    legend_fontsize=12,
+    measurement_offset=1000,
+    bar_width=1,
+    group_newline=True,
+    label_fontsize=None,
+    legend_loc="best",
+):
     """Plot YCSB results for RocksDB.
 
     Config match dicts should look like this:
@@ -234,8 +266,15 @@ def leveldb_plot_ycsb_results(config_matches: List[Dict],
         for bench_type in bench_types:
             config_match["benchmark"] = bench_type
             y_res = results_select(results, config_match, result_select_fn)
+            cm_res = configs_select(results, config_match)
             print(config_match)
             print(y_res)
+            # If len(y_res) > 1, assert they only differ in the "iteration" field
+            if len(y_res) > 1:
+                assert_only_differs_in_fields(cm_res, ["iteration"])
+                y_res = [np.mean(y_res)]
+            elif len(y_res) == 0:
+                raise Exception(f"No results for {config_match}")
             assert len(y_res) == 1, "len(y_res) = %d" % len(y_res)
             ys.append(y_res[0])
         assert len(ys) == len(groups), "len(ys) = %d" % len(ys)
@@ -244,13 +283,25 @@ def leveldb_plot_ycsb_results(config_matches: List[Dict],
     print(y_values)
     print(names)
 
-    gpplot = GrouppedBarPlot(names, y_values, groups, colors,
-                             y_label="Total Throughput (req/sec)")
-    assert gpplot.num_bars == len(colors), "gpplot.num_bars = %d, len(colors) = %d" % (gpplot.num_bars, len(colors))
+    gpplot = GrouppedBarPlot(
+        names, y_values, groups, colors, y_label="Total Throughput (req/sec)"
+    )
+    assert gpplot.num_bars == len(colors), "gpplot.num_bars = %d, len(colors) = %d" % (
+        gpplot.num_bars,
+        len(colors),
+    )
 
-    plot_groupped_bars(gpplot, filename,
-                       measurement_offset=measurement_offset, bar_width=bar_width,
-                       measurement_fontsize=measurement_fontsize, measurement_rotation=measurement_rotation,
-                       ylimit=ylimit, hide_y_ticks=hide_y_ticks, fontsize=fontsize, legend_fontsize=legend_fontsize,
-                       label_fontsize=label_fontsize,
-                       legend_loc=legend_loc)
+    plot_groupped_bars(
+        gpplot,
+        filename,
+        measurement_offset=measurement_offset,
+        bar_width=bar_width,
+        measurement_fontsize=measurement_fontsize,
+        measurement_rotation=measurement_rotation,
+        ylimit=ylimit,
+        hide_y_ticks=hide_y_ticks,
+        fontsize=fontsize,
+        legend_fontsize=legend_fontsize,
+        label_fontsize=label_fontsize,
+        legend_loc=legend_loc,
+    )

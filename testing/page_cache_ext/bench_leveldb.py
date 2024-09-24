@@ -209,6 +209,7 @@ class LevelDBBenchmark(BenchmarkFramework):
         return configs
 
     def benchmark_prepare(self, config):
+        reset_database(self.args.leveldb_db, self.args.leveldb_temp_db)
         drop_page_cache()
         disable_swap()
         disable_smt()
