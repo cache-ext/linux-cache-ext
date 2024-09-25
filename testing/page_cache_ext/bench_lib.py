@@ -447,7 +447,8 @@ class BenchmarkFramework(ABC):
             env.update(extra_envs)
             self.before_benchmark(config)
             try:
-                stdout = check_output(cmd, encoding="utf-8", env=env)
+                stdout = run_command_with_live_output(cmd, env=env)
+                # stdout = check_output(cmd, encoding="utf-8", env=env)
             except CalledProcessError as e:
                 log.error("Benchmark failed with error code %s" % e.returncode)
                 log.error("Output was: %s" % e.output)

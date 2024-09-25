@@ -69,10 +69,12 @@ def print_cgroup_stats(current, previous):
     file_bytes = current["file"]
     active_file_bytes = current["active_file"]
     inactive_file_bytes = current["inactive_file"]
+    dirty_file_bytes = current["file_dirty"]
 
     print(f"File: {format_bytes_str(file_bytes)}")
     print(f"Active File: {format_bytes_str(active_file_bytes)}")
     print(f"Inactive File: {format_bytes_str(inactive_file_bytes)}")
+    print(f"Dirty File: {format_bytes_str(dirty_file_bytes)}")
     print("---")
 
 

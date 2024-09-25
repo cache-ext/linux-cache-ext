@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 
-from itertools import groupby
+import numpy as np
 import sys
 import json
 import logging
 
 from copy import deepcopy
-from typing import Dict, List, Tuple, Callable
+from itertools import groupby
 from matplotlib import pyplot as plt
-import numpy as np
 from bench_lib import (
     BenchRun,
     BenchResults,
     DEFAULT_BASELINE_CGROUP,
     DEFAULT_CACHE_EXT_CGROUP,
 )
+from typing import Dict, List, Tuple, Callable, Union
 
 
 log = logging.getLogger(__name__)
@@ -213,11 +213,71 @@ def leveldb_plot_ycsb_results(
     legend_fontsize=12,
     measurement_offset=1000,
     bar_width=1,
-    group_newline=True,
     label_fontsize=None,
     legend_loc="best",
 ):
-    """Plot YCSB results for RocksDB.
+    bench_type_to_group = {
+        "uniform": "Unif.\n(100/0)",
+        "uniform_read_write": "Unif.\n(50/50)",
+        "ycsb_a": "YCSB\nA",
+        "ycsb_b": "YCSB\nB",
+        "ycsb_c": "YCSB\nC",
+        "ycsb_d": "YCSB\nD",
+        "ycsb_f": "YCSB\nF",
+        "trace19": "Twitter\n19",
+        "trace37": "Twitter\n37",
+    }
+    return bench_plot_groupped_results(
+        config_matches,
+        results,
+        colors=colors,
+        filename=filename,
+        name_func=name_func,
+        bench_types=bench_types,
+        bench_type_to_group=bench_type_to_group,
+        result_select_fn=result_select_fn,
+        ylimit=ylimit,
+        hide_y_ticks=hide_y_ticks,
+        measurement_rotation=measurement_rotation,
+        measurement_fontsize=measurement_fontsize,
+        fontsize=fontsize,
+        legend_fontsize=legend_fontsize,
+        measurement_offset=measurement_offset,
+        bar_width=bar_width,
+        label_fontsize=label_fontsize,
+        legend_loc=legend_loc,
+    )
+
+
+def bench_plot_groupped_results(
+    config_matches: List[Dict],
+    results: List[BenchRun],
+    colors=["salmon", "maroon", "peru"],
+    filename="leveldb_ycsb.pdf",
+    name_func=make_name,
+    bench_types=[
+        "uniform",
+        "uniform_read_write",
+        "ycsb_a",
+        "ycsb_b",
+        "ycsb_c",
+        "ycsb_d",
+        "ycsb_f",
+    ],
+    bench_type_to_group: Union[None, Dict[str, str]] = None,
+    result_select_fn=lambda r: r["throughput_avg"],
+    ylimit=None,
+    hide_y_ticks=False,
+    measurement_rotation=90,
+    measurement_fontsize=12,
+    fontsize=12,
+    legend_fontsize=12,
+    measurement_offset=1000,
+    bar_width=1,
+    label_fontsize=None,
+    legend_loc="best",
+):
+    """Plot bench results.
 
     Config match dicts should look like this:
         {
@@ -230,31 +290,10 @@ def leveldb_plot_ycsb_results(
             "bench_type": "ycsb_a",
         }
     """
-    if group_newline:
-        bench_type_to_group = {
-            "uniform": "Unif.\n(100/0)",
-            "uniform_read_write": "Unif.\n(50/50)",
-            "ycsb_a": "YCSB\nA",
-            "ycsb_b": "YCSB\nB",
-            "ycsb_c": "YCSB\nC",
-            "ycsb_d": "YCSB\nD",
-            "ycsb_f": "YCSB\nF",
-            "trace19": "Twitter\n19",
-            "trace37": "Twitter\n37",
-        }
-    else:
-        bench_type_to_group = {
-            "uniform": "Unif. (100/0)",
-            "uniform_read_write": "Unif. (50/50)",
-            "ycsb_a": "YCSB A",
-            "ycsb_b": "YCSB B",
-            "ycsb_c": "YCSB C",
-            "ycsb_d": "YCSB D",
-            "ycsb_f": "YCSB F",
-            "trace19": "Twitter 19",
-            "trace37": "Twitter 37",
-        }
-
+    if not bench_type_to_group:
+        bench_type_to_group = {}
+        for idx in range(len(bench_types)):
+            bench_type_to_group[bench_types[idx]] = f"Benchmark {idx}"
     groups = [bench_type_to_group[bench_type] for bench_type in bench_types]
     names = []
     y_values = []

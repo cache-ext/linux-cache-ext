@@ -199,9 +199,10 @@ class IOTraceBenchmark(BenchmarkFramework):
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
         configs = add_config_option(
-            "cgroup_size", [5 * GiB, 10 * GiB], configs
+            "cgroup_size", [15 * GiB], configs
         )
         configs = add_config_option(
+            # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
         )
         configs = add_config_option("iteration", list(range(1, 2)), configs)
@@ -257,9 +258,10 @@ class IOTraceBenchmark(BenchmarkFramework):
         return extra_envs
 
     def after_benchmark(self, config):
+        drop_page_cache()
+        sleep(2)
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
-        sleep(2)
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = parse_io_trace_bench_results(stdout)
