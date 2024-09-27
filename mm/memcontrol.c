@@ -261,7 +261,7 @@ struct mem_cgroup *vmpressure_to_memcg(struct vmpressure *vmpr)
  */
 struct page_cache_ext_enabled_cgroup {
 	struct cgroup *cgroup;
-	char path[PATH_MAX];
+	char path[NAME_MAX];
 	rwlock_t lock;
 };
 
@@ -317,9 +317,9 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	const char __user *user_buffer, size_t count, loff_t *offset) {
 	// Get path from userspace buffer
 	struct cgroup *new_cgroup;
-	char new_cgroup_path[PATH_MAX];
+	char new_cgroup_path[NAME_MAX];
 	char *new_cgroup_path_ptr;
-	if (count >= PATH_MAX)
+	if (count >= NAME_MAX)
 		return -ENAMETOOLONG;
 
 	if (copy_from_user(new_cgroup_path, user_buffer, count))
@@ -341,7 +341,7 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	// Change the cgroup pointer
 	write_lock(&page_cache_ext_enabled_cgroup.lock);
 	page_cache_ext_enabled_cgroup.cgroup = new_cgroup;
-	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, PATH_MAX);
+	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, NAME_MAX);
 	write_unlock(&page_cache_ext_enabled_cgroup.lock);
 
 	return count;
@@ -5782,14 +5782,14 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 
-	char name[PATH_MAX];
+	char name[NAME_MAX];
 	int ret;
 	if (memcg->css.cgroup == NULL) {
 		pr_err("cache_ext: Cgroup has no css.cgroup\n");
 		return -1;
 	}
 
-	ret = cgroup_name(memcg->css.cgroup, name, PATH_MAX);
+	ret = cgroup_name(memcg->css.cgroup, name, NAME_MAX);
 	if (ret < 0) {
 		pr_err("mem_cgroup_css_online: Failed to get cgroup name\n");
 		return -1;
