@@ -525,7 +525,7 @@ static long bpf_struct_ops_map_update_elem(struct bpf_map *map, void *key,
 	}
 
 	set_memory_rox((long)st_map->image, 1);
-	err = st_ops->reg(kdata);
+	err = st_ops->reg(kdata, NULL);
 	if (likely(!err)) {
 		/* This refcnt increment on the map here after
 		 * 'st_ops->reg()' is secure since the state of the
@@ -574,7 +574,7 @@ static long bpf_struct_ops_map_delete_elem(struct bpf_map *map, void *key)
 			     BPF_STRUCT_OPS_STATE_TOBEFREE);
 	switch (prev_state) {
 	case BPF_STRUCT_OPS_STATE_INUSE:
-		st_map->st_ops->unreg(&st_map->kvalue.data);
+		st_map->st_ops->unreg(&st_map->kvalue.data, NULL);
 		bpf_map_put(map);
 		return 0;
 	case BPF_STRUCT_OPS_STATE_TOBEFREE:
@@ -776,7 +776,7 @@ static void bpf_struct_ops_map_link_dealloc(struct bpf_link *link)
 		/* st_link->map can be NULL if
 		 * bpf_struct_ops_link_create() fails to register.
 		 */
-		st_map->st_ops->unreg(&st_map->kvalue.data);
+		st_map->st_ops->unreg(&st_map->kvalue.data, NULL);
 		bpf_map_put(&st_map->map);
 	}
 	kfree(st_link);
@@ -892,7 +892,7 @@ int bpf_struct_ops_link_create(union bpf_attr *attr)
 	if (err)
 		goto err_out;
 
-	err = st_map->st_ops->reg(st_map->kvalue.data);
+	err = st_map->st_ops->reg(st_map->kvalue.data, NULL);
 	if (err) {
 		bpf_link_cleanup(&link_primer);
 		link = NULL;
@@ -925,15 +925,15 @@ static void bpf_cache_ext_ops_map_link_dealloc(struct bpf_link *link)
 	st_link = container_of(link, struct bpf_cache_ext_ops_link, link);
 	st_map = (struct bpf_struct_ops_map *)
 		rcu_dereference_protected(st_link->map, true);
+	cgrp = st_link->cgroup;
+
 	if (st_map) {
 		/* st_link->map can be NULL if
 		 * bpf_cache_ext_ops_link_create() fails to register.
 		 */
-		st_map->st_ops->unreg(&st_map->kvalue.data);
+		st_map->st_ops->unreg(&st_map->kvalue.data, cgrp);
 		bpf_map_put(&st_map->map);
 	}
-
-	cgrp = st_link->cgroup;
 
 	// Disable cache_ext
 	down_write(&cgrp->bpf.cache_ext_sem);
@@ -1080,7 +1080,7 @@ int bpf_cache_ext_ops_link_create(union bpf_attr *attr)
 	if (err)
 		goto err_out;
 
-	err = st_map->st_ops->reg(st_map->kvalue.data);
+	err = st_map->st_ops->reg(st_map->kvalue.data, cgrp);
 	if (err) {
 		bpf_link_cleanup(&link_primer);
 		link = NULL;
