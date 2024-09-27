@@ -363,7 +363,7 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
 
 noinline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
-	if (memcg && memcg->cache_ext_enabled && cache_ext_cgroup_enabled(memcg->css.cgroup)) {
+	if (memcg && memcg->cache_ext_valid && cache_ext_cgroup_enabled(memcg->css.cgroup)) {
 		return READ_ONCE(page_cache_ext_ops);
 	}
 	return NULL;
@@ -5637,7 +5637,7 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 		return;
 
 	free_percpu(pn->lruvec_stats_percpu);
-	if (memcg->cache_ext_enabled) {
+	if (memcg->cache_ext_valid) {
 		if (pn->valid_folios_set == NULL) {
 			pr_err("cache_ext: valid_folios_set is NULL but cgroup is cache_ext_enabled\n");
 		} else {
@@ -5801,7 +5801,7 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 			pr_err("cache_ext: Failed to add cache ext structures for cgroup %s\n", name);
 			return -1;
 		}
-		memcg->cache_ext_enabled = true;
+		memcg->cache_ext_valid = true;
 	}
 
 	if (memcg_online_kmem(memcg))
