@@ -91,12 +91,20 @@ static int bpf_page_cache_ext_btf_struct_access(struct bpf_verifier_log *log,
 	return -EACCES;
 }
 
-static int bpf_page_cache_ext_reg(void *kdata)
+static int bpf_page_cache_ext_reg(void *kdata, void *more_data)
 {
 	struct page_cache_ext_ops *ops = kdata;
+	struct cgroup *cgrp = more_data;
+	struct mem_cgroup *memcg;
 	int ret = 0;
+
+	if (!cgrp) {
+		pr_err("page_cache_ext: cgroup is NULL\n");
+		return -EINVAL;
+	}
+
 	// Get the memory cgroup
-	struct mem_cgroup *memcg = page_cache_ext_get_enabled_memcg();
+	memcg = mem_cgroup_from_css(cgrp->subsys[memory_cgrp_id]);
 	if (memcg == NULL) {
 		pr_crit("page_cache_ext: failed to get memcg for registration!\n");
 		return -EINVAL;
@@ -113,17 +121,24 @@ static int bpf_page_cache_ext_reg(void *kdata)
 	}
 
 	pr_info("page_cache_ext: Registering struct ops\n");
-	WRITE_ONCE(page_cache_ext_ops, kdata);
 	return 0;
 }
 
-static void bpf_page_cache_ext_unreg(void *kdata)
+static void bpf_page_cache_ext_unreg(void *kdata, void *more_data)
 {
+	struct cgroup *cgrp = more_data;
+	struct mem_cgroup *memcg;
+
 	pr_info("page_cache_ext: Unregistering struct ops\n");
 	WRITE_ONCE(page_cache_ext_ops, NULL);
 
 	// Delete the registry and all data structures from the memory cgroup.
-	struct mem_cgroup *memcg = page_cache_ext_get_enabled_memcg();
+	if (!cgrp) {
+		pr_err("page_cache_ext: cgroup is NULL\n");
+		return;
+	}
+	
+	memcg = mem_cgroup_from_css(cgrp->subsys[memory_cgrp_id]);
 	if (memcg == NULL) {
 		pr_crit("page_cache_ext: failed to get memcg for release!\n");
 		return;
