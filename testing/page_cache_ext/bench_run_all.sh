@@ -16,4 +16,22 @@ python3 bench_fio.py \
 python3 bench_leveldb.py \
     --cpu 8 \
     --policy-loader ./page_cache_ext_sampling.out \
-    --results-file ./lfu_ycsb_results.json
+    --results-file ./lfu_ycsb_results.json \
+    --leveldb-db /mydata/leveldb_db
+
+# Benchmark LevelDB with mixed GET-SCAN
+python3 bench_leveldb.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_get_scan.out \
+    --results-file ./get_scan_results.json \
+    --leveldb-db /mydata/leveldb_db \
+    --benchmark mixed_get_scan
+
+
+# Benchmark Google IO traces
+TRACE_DIR="google_traces/data_cluster1_16TB_20240115_data-00000-of-00100"
+python3 bench_io_trace.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_sampling.out \
+    --results-file io_trace_results.json  \
+    --trace-data-dir $TRACE_DIR

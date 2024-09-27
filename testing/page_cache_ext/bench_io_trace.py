@@ -20,12 +20,6 @@ GiB = 2**30
 CLEANUP_TASKS = []
 
 
-def reset_database(db_dir: str, temp_db_dir: str):
-    if not db_dir.endswith("/"):
-        db_dir += "/"
-    check_output(["rsync", "-avpl", "--delete", db_dir, temp_db_dir])
-
-
 def parse_io_trace_bench_results(stdout: str) -> Dict:
     # Uniform: calculating overall performance metrics... (might take a while)
     # Uniform overall: UPDATE throughput 0.00 ops/sec, INSERT throughput 0.00 ops/sec, READ throughput 9038.24 ops/sec, SCAN throughput 0.00 ops/sec, READ_MODIFY_WRITE throughput 0.00 ops/sec, total throughput 9038.24 ops/sec
@@ -192,14 +186,13 @@ class IOTraceBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
-        configs = add_config_option("enable_mmap", [False], configs)
         configs = add_config_option("runtime_seconds", [60], configs)
-        configs = add_config_option("warmup_runtime_seconds", [60], configs)
+        configs = add_config_option("warmup_runtime_seconds", [120], configs)
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
         configs = add_config_option(
-            "cgroup_size", [15 * GiB], configs
+            "cgroup_size", [10 * GiB, 15 * GiB], configs
         )
         configs = add_config_option(
             # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
@@ -209,7 +202,7 @@ class IOTraceBenchmark(BenchmarkFramework):
         return configs
 
     def benchmark_prepare(self, config):
-        reset_database(self.args.trace_data_dir, self.args.trace_temp_data_dir)
+        rsync_folder(self.args.trace_data_dir, self.args.trace_temp_data_dir)
         drop_page_cache()
         disable_swap()
         disable_smt()
@@ -246,17 +239,6 @@ class IOTraceBenchmark(BenchmarkFramework):
         ]
         return cmd
 
-    def cmd_extra_envs(self, config):
-        extra_envs = {}
-        if (
-            config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP
-            and "mixed_get_scan" in config["benchmark"]
-        ):
-            extra_envs["ENABLE_BPF_SCAN_MAP"] = "1"
-        if config["enable_mmap"]:
-            extra_envs["LEVELDB_MAX_MMAPS"] = "10000"
-        return extra_envs
-
     def after_benchmark(self, config):
         drop_page_cache()
         sleep(2)
@@ -271,6 +253,9 @@ class IOTraceBenchmark(BenchmarkFramework):
 def main():
     global log
     ulimit(1000000)
+    # To ensure that writeback keeps up with the benchmark
+    set_sysctl("vm.dirty_background_ratio", 1)
+    set_sysctl("vm.dirty_ratio", 30)
     io_trace_bench = IOTraceBenchmark()
     # Check that trace data dir exists
     if not os.path.exists(io_trace_bench.args.trace_data_dir):

@@ -40,7 +40,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, __u64);
 	__type(value, struct folio_metadata);
-	__uint(max_entries, 3000000);
+	__uint(max_entries, 4000000);
 } folio_metadata_map SEC(".maps");
 
 struct {

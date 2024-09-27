@@ -8,14 +8,6 @@
 
 char _license[] SEC("license") = "GPL";
 
-#define BPF_STRUCT_OPS(name, args...) \
-	SEC("struct_ops/" #name)      \
-	BPF_PROG(name, ##args)
-
-#define BPF_STRUCT_OPS_SLEEPABLE(name, args...) \
-	SEC("struct_ops.s/" #name)              \
-	BPF_PROG(name, ##args)
-
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 // #define DEBUG
@@ -47,7 +39,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, __u64);
 	__type(value, struct folio_metadata);
-	__uint(max_entries, 3000000);
+	__uint(max_entries, 4000000);
 } folio_metadata_map SEC(".maps");
 
 struct {
@@ -87,6 +79,15 @@ inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	if (counter) {
 		__sync_fetch_and_add(counter, delta);
 	}
+}
+
+inline s64 get_stat(char (*stat_name)[MAX_STAT_NAME_LEN]) {
+	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
+	if (!counter) {
+		bpf_printk("page_cache_ext: Failed to get stat: %s\n", *stat_name);
+		return 0;
+	}
+	return *counter;
 }
 
 inline u64 get_sampling_list(enum ListType list_type)
@@ -307,9 +308,9 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 		bpf_printk("page_cache_ext: Failed to get metadata\n");
 		return 0;
 	}
-	if (!meta_a->touched_by_scan) {
-		bpf_printk("page_cache_ext: Found page not in scan in score_fn\n");
-	}
+	// if (!meta_a->touched_by_scan) {
+	// 	bpf_printk("page_cache_ext: Found page not in scan in score_fn\n");
+	// }
 	score = meta_a->accesses;
 	// In leveldb, the index block is at the end of the file.
 	bool is_last_page = is_last_page_in_file(a->folio);
@@ -325,10 +326,20 @@ void BPF_STRUCT_OPS(mixed_evict_folios,
 		    struct mem_cgroup *memcg)
 {
 	int zero = 0, one = 1;
+	int sampling_rate = 5;
 	dbg_printk(
 		"page_cache_ext: Hi from the mixed_evict_folios hook! :D\n");
     // When evicting, use the scan list first always
-	u64 sampling_list = get_sampling_list(LIST_FOR_SCANS);
+	s64 num_scan_pages = get_stat(&STAT_SCAN_PAGES);
+	if (num_scan_pages == 0) {
+		bpf_printk("page_cache_ext: No pages to evict\n");
+		return;
+	}
+	enum ListType list_type = LIST_FOR_SCANS;
+	if (num_scan_pages < 1000 * sampling_rate) {
+		list_type = LIST_GENERAL;
+	}
+	u64 sampling_list = get_sampling_list(list_type);
 	if (sampling_list == 0) {
 		bpf_printk(
 			"page_cache_ext: Failed to get sampling_list on eviction path\n");
@@ -336,7 +347,7 @@ void BPF_STRUCT_OPS(mixed_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.sample_size = 5,
+		.sample_size = sampling_rate,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);

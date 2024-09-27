@@ -9,6 +9,18 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
+// Generic
+
+#define BPF_STRUCT_OPS(name, args...) \
+	SEC("struct_ops/" #name)      \
+	BPF_PROG(name, ##args)
+
+#define BPF_STRUCT_OPS_SLEEPABLE(name, args...) \
+	SEC("struct_ops.s/" #name)              \
+	BPF_PROG(name, ##args)
+
+// cache_ext BPF API
+
 #define CACHE_EXT_CONTINUE_ITER 0
 #define CACHE_EXT_STOP_ITER 1
 #define CACHE_EXT_EVICT_NODE 2

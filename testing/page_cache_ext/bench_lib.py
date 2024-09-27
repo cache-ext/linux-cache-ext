@@ -192,6 +192,10 @@ def drop_page_cache():
     run(["sudo", "sh", "-c", "echo 1 > /proc/sys/vm/drop_caches"])
 
 
+def set_sysctl(key: str, value: Union[int, str]):
+    run(["sudo", "sysctl", "-w", f"{key}={value}"])
+
+
 def disable_swap():
     run(["sudo", "swapoff", "-a"])
 
@@ -200,11 +204,11 @@ def disable_smt():
     run(["sudo", "sh", "-c", "echo off > /sys/devices/system/cpu/smt/control"])
 
 
-def reset_database(db_dir: str, temp_db_dir: str):
+def rsync_folder(source_dir: str, dest_dir: str):
     # rsync -avpl --delete /mydata/leveldb_db_orig/ /mydata/leveldb_db/
-    if not db_dir.endswith("/"):
-        db_dir += "/"
-    run(["rsync", "-avpl", "--delete", db_dir, temp_db_dir])
+    if not source_dir.endswith("/"):
+        source_dir += "/"
+    run(["rsync", "-avpl", "--delete", source_dir, dest_dir])
 
 
 def load_json(path: str):

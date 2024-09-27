@@ -1,0 +1,170 @@
+[
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "baseline_test",
+            "iteration": 0,
+            "fadvise": "NOREUSE"
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 1517.82,
+            "scan_throughput_avg": 23.62,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 1541.44,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1969139.36,
+            "latency_avg": 1969139.36,
+            "read_latency_p99": 43164473.17,
+            "latency_p99": 43164473.17,
+            "scan_latency_avg": 42263504.41,
+            "scan_latency_p99": 373238101.1,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "baseline_test",
+            "iteration": 2,
+            "fadvise": "DONTNEED"
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 1719.79,
+            "scan_throughput_avg": 19.8,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 1739.59,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1737120.43,
+            "latency_avg": 1737120.43,
+            "read_latency_p99": 29449680.17,
+            "latency_p99": 29449680.17,
+            "scan_latency_avg": 50419816.88,
+            "scan_latency_p99": 389473016.26,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "cache_ext_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 2360.37,
+            "scan_throughput_avg": 22.41,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 2382.78,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1264655.26,
+            "latency_avg": 1264655.26,
+            "read_latency_p99": 6546883.41,
+            "latency_p99": 6546883.41,
+            "scan_latency_avg": 44580546.17,
+            "scan_latency_p99": 368030456.94,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "baseline_test",
+            "iteration": 3,
+            "fadvise": "SEQUENTIAL"
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 1445.72,
+            "scan_throughput_avg": 24.34,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 1470.05,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 2067636.87,
+            "latency_avg": 2067636.87,
+            "read_latency_p99": 43665508.9,
+            "latency_p99": 43665508.9,
+            "scan_latency_avg": 41081847.32,
+            "scan_latency_p99": 375035840.69,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 1487.24,
+            "scan_throughput_avg": 24.63,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 1511.87,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 2011525.05,
+            "latency_avg": 2011525.05,
+            "read_latency_p99": 43376070.47,
+            "latency_p99": 43376070.47,
+            "scan_latency_avg": 40531194.23,
+            "scan_latency_p99": 377418470.99,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]

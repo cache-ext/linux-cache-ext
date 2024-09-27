@@ -7,16 +7,8 @@
 
 char _license[] SEC("license") = "GPL";
 
-#define BPF_STRUCT_OPS(name, args...) \
-	SEC("struct_ops/" #name)      \
-	BPF_PROG(name, ##args)
-
-#define BPF_STRUCT_OPS_SLEEPABLE(name, args...) \
-	SEC("struct_ops.s/" #name)              \
-	BPF_PROG(name, ##args)
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-
 
 // #define DEBUG
 #ifdef DEBUG
@@ -144,7 +136,7 @@ static int iterate_mru(int idx, struct cache_ext_list_node *node)
 	// TODO: Also check the PG_lru flag.
 
 	// bpf_printk("cache_ext: Iterate idx %d\n", idx);
-	if (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))
+	// if (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))
 		// bpf_printk("cache_ext: Iterate idx %d\n", idx);
 	if ((idx < 30) && (!folio_test_uptodate(node->folio) || !folio_test_lru(node->folio))) {
 		return CACHE_EXT_CONTINUE_ITER;

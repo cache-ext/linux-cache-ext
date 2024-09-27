@@ -200,12 +200,13 @@ class LevelDBBenchmark(BenchmarkFramework):
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
         configs = add_config_option(
-            "cgroup_size", [5 * GiB, 10 * GiB], configs
+            "cgroup_size", [10 * GiB], configs
         )
         configs = add_config_option(
+            # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
         )
-        configs = add_config_option("iteration", list(range(1, 10)), configs)
+        configs = add_config_option("iteration", list(range(1, 2)), configs)
         return configs
 
     def benchmark_prepare(self, config):
@@ -250,6 +251,8 @@ class LevelDBBenchmark(BenchmarkFramework):
             extra_envs["ENABLE_BPF_SCAN_MAP"] = "1"
         if config["enable_mmap"]:
             extra_envs["LEVELDB_MAX_MMAPS"] = "10000"
+        # if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
+        #     extra_envs["ENABLE_SCAN_FADVISE"] = "1"
         return extra_envs
 
     def after_benchmark(self, config):

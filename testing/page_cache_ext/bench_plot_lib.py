@@ -170,6 +170,13 @@ def plot_groupped_bars(
 
 def make_name(config: Dict) -> str:
     if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
+        fadvise = config.get("fadvise", None)
+        if fadvise == "DONTNEED":
+            return "FADVISE_DONTNEED"
+        elif fadvise == "NOREUSE":
+            return "FADVISE_NOREUSE"
+        elif fadvise == "SEQUENTIAL":
+            return "FADVISE_SEQUENTIAL"
         return "Baseline"
     elif config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
         return "cache_ext"
@@ -205,8 +212,10 @@ def leveldb_plot_ycsb_results(
         "ycsb_f",
     ],
     result_select_fn=lambda r: r["throughput_avg"],
+    y_label="Throughput (ops/sec)",
     ylimit=None,
     hide_y_ticks=False,
+    show_measurements=True,
     measurement_rotation=90,
     measurement_fontsize=12,
     fontsize=12,
@@ -226,6 +235,7 @@ def leveldb_plot_ycsb_results(
         "ycsb_f": "YCSB\nF",
         "trace19": "Twitter\n19",
         "trace37": "Twitter\n37",
+        "mixed_get_scan": "Mixed Get/Scan",
     }
     return bench_plot_groupped_results(
         config_matches,
@@ -237,7 +247,9 @@ def leveldb_plot_ycsb_results(
         bench_type_to_group=bench_type_to_group,
         result_select_fn=result_select_fn,
         ylimit=ylimit,
+        y_label=y_label,
         hide_y_ticks=hide_y_ticks,
+        show_measurements=show_measurements,
         measurement_rotation=measurement_rotation,
         measurement_fontsize=measurement_fontsize,
         fontsize=fontsize,
@@ -266,8 +278,10 @@ def bench_plot_groupped_results(
     ],
     bench_type_to_group: Union[None, Dict[str, str]] = None,
     result_select_fn=lambda r: r["throughput_avg"],
+    y_label="Total Throughput (req/sec)",
     ylimit=None,
     hide_y_ticks=False,
+    show_measurements=True,
     measurement_rotation=90,
     measurement_fontsize=12,
     fontsize=12,
@@ -323,7 +337,7 @@ def bench_plot_groupped_results(
     print(names)
 
     gpplot = GrouppedBarPlot(
-        names, y_values, groups, colors, y_label="Total Throughput (req/sec)"
+        names, y_values, groups, colors, y_label=y_label
     )
     assert gpplot.num_bars == len(colors), "gpplot.num_bars = %d, len(colors) = %d" % (
         gpplot.num_bars,
@@ -335,6 +349,7 @@ def bench_plot_groupped_results(
         filename,
         measurement_offset=measurement_offset,
         bar_width=bar_width,
+        show_measurements=show_measurements,
         measurement_fontsize=measurement_fontsize,
         measurement_rotation=measurement_rotation,
         ylimit=ylimit,
