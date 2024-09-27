@@ -386,7 +386,7 @@ struct mem_cgroup {
 	struct lru_gen_mm_list mm_list;
 #endif
 
-	bool cache_ext_enabled;
+	bool cache_ext_valid;
 
 	struct mem_cgroup_per_node *nodeinfo[];
 };
