@@ -66,8 +66,7 @@ struct mem_cgroup_reclaim_cookie {
  * Page cache ext.
  */
 
- bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup);
-
+bool cache_ext_cgroup_enabled(struct cgroup *cgroup);
 
 /*
  * valid_folios is a set of valid folio counters in the system. It's used to
@@ -93,7 +92,6 @@ struct valid_folio {
 	uintptr_t folio_ptr;
 	struct cache_ext_list_node *cache_ext_node;
 };
-
 
 // Function definitions for the valid_folios_set
 struct valid_folios_set* init_valid_folios_set(int node, uint64_t num_buckets);

@@ -931,7 +931,6 @@ unlock:
 	if (xas_error(&xas))
 		goto error;
 
-
 	struct mem_cgroup *memcg = folio_memcg(folio);
 	/* page_cache_ext: Maintain the valid folios hashtable */
 	if (memcg->cache_ext_enabled)

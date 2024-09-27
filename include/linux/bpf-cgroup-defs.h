@@ -70,6 +70,11 @@ struct cgroup_bpf {
 
 	/* cgroup_bpf is released using a work queue */
 	struct work_struct release_work;
+
+	/* cache_ext */
+	bool cache_ext_enabled;
+	struct page_cache_ext_ops *cache_ext_ops;
+	struct rw_semaphore cache_ext_sem;
 };
 
 #else /* CONFIG_CGROUP_BPF */
