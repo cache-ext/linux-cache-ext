@@ -265,7 +265,6 @@ struct page_cache_ext_enabled_cgroup {
 	rwlock_t lock;
 };
 
-
 struct page_cache_ext_enabled_cgroup page_cache_ext_enabled_cgroup;
 
 void page_cache_ext_enabled_cgroup_init(void) {
@@ -314,7 +313,6 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
 	return bytes_to_copy;
 }
 
-
 ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	const char __user *user_buffer, size_t count, loff_t *offset) {
 	// Get path from userspace buffer
@@ -349,11 +347,11 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	return count;
 }
 
-bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup) {
-	bool res;
-	read_lock(&page_cache_ext_enabled_cgroup.lock);
-	res = (cgroup == page_cache_ext_enabled_cgroup.cgroup);
-	read_unlock(&page_cache_ext_enabled_cgroup.lock);
+bool cache_ext_cgroup_enabled(struct cgroup *cgroup) {
+	down_read(&cgroup->bpf.cache_ext_sem);
+	bool res = cgroup->bpf.cache_ext_enabled;
+	up_read(&cgroup->bpf.cache_ext_sem);
+
 	return res;
 }
 
@@ -365,24 +363,15 @@ static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
 
 noinline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
-	if (memcg && memcg->cache_ext_enabled && page_cache_ext_cgroup_enabled(memcg->css.cgroup)) {
+	if (memcg && memcg->cache_ext_enabled && cache_ext_cgroup_enabled(memcg->css.cgroup)) {
 		return READ_ONCE(page_cache_ext_ops);
 	}
 	return NULL;
 }
 
-
-
-
- /*
- ******************************************************************************
- */
-
-
 /*
  * Valid folios set code.
  */
-
 
 static inline uintptr_t folio_ptr_to_key (struct folio *folio) {
 	return (uintptr_t)folio;
@@ -7796,22 +7785,16 @@ __setup("cgroup.memory=", cgroup_memory);
  */
 static int __init mem_cgroup_init(void)
 {
+	int cpu, node;
 
-	/*
-	 * Page cache extension
-	 */
+	/* cache_ext */
 	struct proc_dir_entry *entry;
 	entry = proc_create("page_cache_ext_enabled_cgroup", 0666, NULL,
 						&proc_file_page_cache_ext_enabled_cgroup_fops);
-    if (!entry) {
-        return -ENOMEM; // Out of memory
-    }
+	if (!entry)
+		return -ENOMEM; // Out of memory
 
 	page_cache_ext_enabled_cgroup_init();
-
-	/*************************************************************************/
-
-	int cpu, node;
 
 	/*
 	 * Currently s32 type (can refer to struct batched_lruvec_stat) is

@@ -908,3 +908,197 @@ err_out:
 	return err;
 }
 
+/* cache_ext implementation */
+
+struct bpf_cache_ext_ops_link {
+	struct bpf_link link;
+	struct bpf_map __rcu *map;
+	struct cgroup *cgroup;
+};
+
+static void bpf_cache_ext_ops_map_link_dealloc(struct bpf_link *link)
+{
+	struct bpf_cache_ext_ops_link *st_link;
+	struct bpf_struct_ops_map *st_map; // TODO: change this?
+	struct cgroup *cgrp;
+
+	st_link = container_of(link, struct bpf_cache_ext_ops_link, link);
+	st_map = (struct bpf_struct_ops_map *)
+		rcu_dereference_protected(st_link->map, true);
+	if (st_map) {
+		/* st_link->map can be NULL if
+		 * bpf_cache_ext_ops_link_create() fails to register.
+		 */
+		st_map->st_ops->unreg(&st_map->kvalue.data);
+		bpf_map_put(&st_map->map);
+	}
+
+	cgrp = st_link->cgroup;
+
+	// Disable cache_ext
+	down_write(&cgrp->bpf.cache_ext_sem);
+	cgroup_lock();
+	cgrp->bpf.cache_ext_enabled = false;
+	cgrp->bpf.cache_ext_ops = NULL;
+	cgroup_unlock();
+	up_write(&cgrp->bpf.cache_ext_sem);
+
+	cgroup_put(cgrp);
+	kfree(st_link);
+}
+
+static void bpf_cache_ext_ops_map_link_show_fdinfo(const struct bpf_link *link,
+					    struct seq_file *seq)
+{
+	struct bpf_cache_ext_ops_link *st_link;
+	struct bpf_map *map;
+	u64 cg_id = 0;
+
+	st_link = container_of(link, struct bpf_cache_ext_ops_link, link);
+
+	cgroup_lock();
+	if (st_link->cgroup)
+		cg_id = cgroup_id(st_link->cgroup);
+	cgroup_unlock();
+
+	rcu_read_lock();
+	map = rcu_dereference(st_link->map);
+	seq_printf(seq, "map_id:\t%d\ncgroup:\t%lld\n", map->id, cg_id);
+	rcu_read_unlock();
+}
+
+static int bpf_cache_ext_ops_map_link_fill_link_info(const struct bpf_link *link,
+					       struct bpf_link_info *info)
+{
+	struct bpf_cache_ext_ops_link *st_link;
+	struct bpf_map *map;
+	u64 cg_id = 0;
+
+	st_link = container_of(link, struct bpf_cache_ext_ops_link, link);
+	rcu_read_lock();
+	map = rcu_dereference(st_link->map);
+	info->cache_ext_ops.map_id = map->id;
+	rcu_read_unlock();
+
+	cgroup_lock();
+	if (st_link->cgroup)
+		cg_id = cgroup_id(st_link->cgroup);
+	cgroup_unlock();
+
+	info->cache_ext_ops.cgroup_id = cg_id;
+	return 0;
+}
+
+static int bpf_cache_ext_ops_map_link_update(struct bpf_link *link, struct bpf_map *new_map,
+					  struct bpf_map *expected_old_map)
+{
+	struct bpf_struct_ops_map *st_map, *old_st_map;
+	struct bpf_map *old_map;
+	struct bpf_cache_ext_ops_link *st_link;
+	int err;
+
+	st_link = container_of(link, struct bpf_cache_ext_ops_link, link);
+	st_map = container_of(new_map, struct bpf_struct_ops_map, map);
+
+	if (!bpf_struct_ops_valid_to_reg(new_map))
+		return -EINVAL;
+
+	if (!st_map->st_ops->update)
+		return -EOPNOTSUPP;
+
+	mutex_lock(&update_mutex);
+
+	old_map = rcu_dereference_protected(st_link->map, lockdep_is_held(&update_mutex));
+	if (expected_old_map && old_map != expected_old_map) {
+		err = -EPERM;
+		goto err_out;
+	}
+
+	old_st_map = container_of(old_map, struct bpf_struct_ops_map, map);
+	/* The new and old struct_ops must be the same type. */
+	if (st_map->st_ops != old_st_map->st_ops) {
+		err = -EINVAL;
+		goto err_out;
+	}
+
+	err = st_map->st_ops->update(st_map->kvalue.data, old_st_map->kvalue.data);
+	if (err)
+		goto err_out;
+
+	bpf_map_inc(new_map);
+	rcu_assign_pointer(st_link->map, new_map);
+	bpf_map_put(old_map);
+
+err_out:
+	mutex_unlock(&update_mutex);
+
+	return err;
+}
+
+static const struct bpf_link_ops bpf_cache_ext_ops_map_lops = {
+	.dealloc = bpf_cache_ext_ops_map_link_dealloc,
+	.show_fdinfo = bpf_cache_ext_ops_map_link_show_fdinfo,
+	.fill_link_info = bpf_cache_ext_ops_map_link_fill_link_info,
+	.update_map = bpf_cache_ext_ops_map_link_update,
+};
+
+int bpf_cache_ext_ops_link_create(union bpf_attr *attr)
+{
+	struct bpf_cache_ext_ops_link *link = NULL;
+	struct bpf_link_primer link_primer;
+	struct bpf_struct_ops_map *st_map;
+	struct bpf_map *map;
+	struct cgroup *cgrp;
+	int err;
+
+	map = bpf_map_get(attr->link_create.map_fd);
+	if (IS_ERR(map))
+		return PTR_ERR(map);
+
+	cgrp = cgroup_get_from_fd(attr->link_create.target_fd);
+	if (IS_ERR(map)) {
+		bpf_map_put(map);
+		return PTR_ERR(cgrp);
+	}
+
+	st_map = (struct bpf_struct_ops_map *)map;
+
+	if (!bpf_struct_ops_valid_to_reg(map)) {
+		err = -EINVAL;
+		goto err_out;
+	}
+
+	link = kzalloc(sizeof(*link), GFP_USER);
+	if (!link) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+	bpf_link_init(&link->link, BPF_LINK_TYPE_CACHE_EXT_OPS, &bpf_cache_ext_ops_map_lops, NULL);
+	link->cgroup = cgrp;
+
+	err = bpf_link_prime(&link->link, &link_primer);
+	if (err)
+		goto err_out;
+
+	err = st_map->st_ops->reg(st_map->kvalue.data);
+	if (err) {
+		bpf_link_cleanup(&link_primer);
+		link = NULL;
+		goto err_out;
+	}
+	RCU_INIT_POINTER(link->map, map);
+
+	// Enable cache ext
+	down_write(&cgrp->bpf.cache_ext_sem);
+	cgrp->bpf.cache_ext_ops = (struct page_cache_ext_ops *)st_map->kvalue.data;
+	cgrp->bpf.cache_ext_enabled = true;
+	up_write(&cgrp->bpf.cache_ext_sem);
+
+	return bpf_link_settle(&link_primer);
+
+err_out:
+	bpf_map_put(map);
+	cgroup_put(cgrp);
+	kfree(link);
+	return err;
+}
