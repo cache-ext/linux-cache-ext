@@ -259,93 +259,6 @@ struct mem_cgroup *vmpressure_to_memcg(struct vmpressure *vmpr)
 /*
  * Page Cache Extension.
  */
-struct page_cache_ext_enabled_cgroup {
-	struct cgroup *cgroup;
-	char path[NAME_MAX];
-	rwlock_t lock;
-};
-
-struct page_cache_ext_enabled_cgroup page_cache_ext_enabled_cgroup;
-
-void page_cache_ext_enabled_cgroup_init(void) {
-	page_cache_ext_enabled_cgroup.cgroup = NULL;
-	page_cache_ext_enabled_cgroup.path[0] = '\0';
-	rwlock_init(&page_cache_ext_enabled_cgroup.lock);
-}
-
-struct mem_cgroup *page_cache_ext_get_enabled_memcg(void) {
-	struct mem_cgroup *memcg;
-	struct cgroup *cgroup = READ_ONCE(page_cache_ext_enabled_cgroup.cgroup);
-	if (!cgroup) {
-		return NULL;
-	}
-	memcg = mem_cgroup_from_css(page_cache_ext_enabled_cgroup.cgroup->subsys[memory_cgrp_id]);
-	return memcg;
-}
-
-// New procfs file to read/write the cgroup
-ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
-	char __user *user_buffer, size_t count, loff_t *offset) {
-	read_lock(&page_cache_ext_enabled_cgroup.lock);
-	// Return current cgroup path stored in page_cache_ext_enabled_cgroup_path
-	ssize_t bytes_to_copy;
-	size_t len;
-	int ret;
-	loff_t pos = *offset;
-	// Check if offset is beyond the string length
-	len = strlen(page_cache_ext_enabled_cgroup.path);
-	if (pos >= len) {
-		read_unlock(&page_cache_ext_enabled_cgroup.lock);
-		return 0; // EOF
-	}
-	// Calculate the number of bytes to copy, ensuring we don't exceed count
-	bytes_to_copy = len - pos;
-	if (bytes_to_copy > count)
-		bytes_to_copy = count;
-	// Copy the data to user buffer
-	ret = copy_to_user(user_buffer, page_cache_ext_enabled_cgroup.path + pos, bytes_to_copy);
-	read_unlock(&page_cache_ext_enabled_cgroup.lock);
-	if (ret) {
-		return -EFAULT;
-	}
-	// Update the offset
-	*offset += bytes_to_copy;
-	return bytes_to_copy;
-}
-
-ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
-	const char __user *user_buffer, size_t count, loff_t *offset) {
-	// Get path from userspace buffer
-	struct cgroup *new_cgroup;
-	char new_cgroup_path[NAME_MAX];
-	char *new_cgroup_path_ptr;
-	if (count >= NAME_MAX)
-		return -ENAMETOOLONG;
-
-	if (copy_from_user(new_cgroup_path, user_buffer, count))
-		return -EFAULT;
-
-	// Null terminate the path
-	new_cgroup_path[count] = '\0';
-
-	// Remove leading and trailing whitespace
-	new_cgroup_path_ptr = strim(new_cgroup_path);
-
-	// Get the cgroup pointer for this path
-	new_cgroup = cgroup_get_from_path(new_cgroup_path_ptr);
-	if (IS_ERR(new_cgroup)) {
-		pr_err("page_cache_ext: Invalid cgroup path: %s\n", new_cgroup_path_ptr);
-		return PTR_ERR(new_cgroup);
-	}
-
-	// Change the cgroup pointer
-	write_lock(&page_cache_ext_enabled_cgroup.lock);
-	page_cache_ext_enabled_cgroup.cgroup = new_cgroup;
-	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, NAME_MAX);
-	write_unlock(&page_cache_ext_enabled_cgroup.lock);
-
-	return count;
-}
 
 bool cache_ext_cgroup_enabled(struct cgroup *cgroup) {
 	down_read(&cgroup->bpf.cache_ext_sem);
@@ -355,17 +268,10 @@ bool cache_ext_cgroup_enabled(struct cgroup *cgroup) {
 	return res;
 }
 
-
-static const struct proc_ops proc_file_page_cache_ext_enabled_cgroup_fops = {
-    .proc_read = procfile_page_cache_ext_enabled_cgroup_read,
-    .proc_write = procfile_page_cache_ext_enabled_cgroup_write,
-};
-
 noinline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
 {
-	if (memcg && memcg->cache_ext_valid && cache_ext_cgroup_enabled(memcg->css.cgroup)) {
-		return READ_ONCE(page_cache_ext_ops);
-	}
+	if (memcg && memcg->cache_ext_valid && cache_ext_cgroup_enabled(memcg->css.cgroup))
+		return memcg->css.cgroup->bpf.cache_ext_ops;
 	return NULL;
 }
 
@@ -7786,15 +7692,6 @@ __setup("cgroup.memory=", cgroup_memory);
 static int __init mem_cgroup_init(void)
 {
 	int cpu, node;
-
-	/* cache_ext */
-	struct proc_dir_entry *entry;
-	entry = proc_create("page_cache_ext_enabled_cgroup", 0666, NULL,
-						&proc_file_page_cache_ext_enabled_cgroup_fops);
-	if (!entry)
-		return -ENOMEM; // Out of memory
-
-	page_cache_ext_enabled_cgroup_init();
 
 	/*
 	 * Currently s32 type (can refer to struct batched_lruvec_stat) is
