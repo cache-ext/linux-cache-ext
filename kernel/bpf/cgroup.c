@@ -488,6 +488,10 @@ int cgroup_bpf_inherit(struct cgroup *cgrp)
 	for (i = 0; i < NR; i++)
 		activate_effective_progs(cgrp, i, arrays[i]);
 
+	init_rwsem(&cgrp->bpf.cache_ext_sem);
+	cgrp->bpf.cache_ext_enabled = false;
+	cgrp->bpf.cache_ext_ops = NULL;
+
 	return 0;
 cleanup:
 	for (i = 0; i < NR; i++)

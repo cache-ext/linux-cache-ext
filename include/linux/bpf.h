@@ -1655,6 +1655,7 @@ static inline void bpf_module_put(const void *data, struct module *owner)
 		module_put(owner);
 }
 int bpf_struct_ops_link_create(union bpf_attr *attr);
+int bpf_cache_ext_ops_link_create(union bpf_attr *attr);
 
 #ifdef CONFIG_NET
 /* Define it here to avoid the use of forward declaration */
