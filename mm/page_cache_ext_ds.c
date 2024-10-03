@@ -172,7 +172,7 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 				node->folio;
 			ctx->nr_folios_to_evict++;
 			if (ctx->nr_folios_to_evict ==
-			    ARRAY_SIZE(ctx->folios_to_evict) - 1) {
+			    ARRAY_SIZE(ctx->folios_to_evict)) {
 				ret = CACHE_EXT_EVICT_ARRAY_FILLED;
 				break;
 			}

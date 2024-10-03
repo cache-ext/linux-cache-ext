@@ -92,6 +92,20 @@ static inline bool folio_test_lru(struct folio *folio)
 	return ret;
 }
 
+static inline bool folio_test_dirty(struct folio *folio)
+{
+	bool ret = generic_test_bit(PG_dirty, folio_flags(folio, 0));
+
+	return ret;
+}
+
+static inline bool folio_test_writeback(struct folio *folio)
+{
+	bool ret = generic_test_bit(PG_writeback, folio_flags(folio, 0));
+
+	return ret;
+}
+
 
 static __always_inline bool folio_test_head(struct folio *folio)
 {

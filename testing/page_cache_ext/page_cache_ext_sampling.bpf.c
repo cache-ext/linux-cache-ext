@@ -33,7 +33,6 @@ char _license[] SEC("license") = "GPL";
 
 struct folio_metadata {
 	u64 accesses;
-	u64 last_access_time;
 };
 
 struct {
@@ -72,7 +71,6 @@ enum App {
 	LEVELDB,
 };
 
-
 // Keys for stats
 char STAT_SCAN_PAGES[MAX_STAT_NAME_LEN] = "scan_pages";
 char STAT_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "total_pages";
@@ -81,7 +79,7 @@ char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 
 /* Counter for list size */
 __u64 list_size = 0;
-int APP_TYPE = GENERIC;
+int APP_TYPE = LEVELDB;
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	// bpf_printk("update_stat!\n");
@@ -172,7 +170,6 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	// Create folio metadata
 	u64 key = (u64)folio;
 	struct folio_metadata new_meta = { .accesses = 1 };
-	new_meta.last_access_time = bpf_ktime_get_ns();
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
 
@@ -202,7 +199,6 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 		}
 	}
 	__sync_fetch_and_add(&meta->accesses, 1);
-	meta->last_access_time = bpf_ktime_get_ns();
 }
 
 void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
@@ -241,29 +237,6 @@ static inline bool is_last_page_in_file(struct folio *folio)
 	return page_index == last_page_index;
 }
 
-static s64 bpf_mru_score_fn(struct cache_ext_list_node *a)
-{
-	struct folio_metadata *meta_a;
-	u64 key_a = (u64)a->folio;
-	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
-	if (!meta_a) {
-		bpf_printk("page_cache_ext: Failed to get metadata\n");
-		return 0;
-	}
-	// if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio))
-	// 	return S64_MAX;
-	// Simulate MRU
-	if (meta_a->last_access_time == 0) {
-		bpf_printk("page_cache_ext: Invalid last_access_time\n");
-	}
-	u64 msb_set = ((u64)1 << 63);
-	if (meta_a->last_access_time > msb_set) {
-		bpf_printk("page_cache_ext: last_access_time is too large\n");
-	}
-
-	return -1 * meta_a->last_access_time;
-}
-
 static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 {
 	s64 score = 0;
@@ -285,6 +258,9 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	}
 
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) {
+		return -1;
+	}
+	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
 		return -1;
 	}
 	return score;
@@ -311,7 +287,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.sample_size = 5,
+		.sample_size = 10,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);

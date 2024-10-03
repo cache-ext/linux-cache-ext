@@ -1,0 +1,30 @@
+[
+    {
+        "config": {
+            "name": "filesearch_benchmark",
+            "cpus": 8,
+            "passes": 10,
+            "cgroup_size": 1073741824,
+            "cgroup_name": "baseline_test",
+            "benchmark": "filesearch",
+            "iteration": 1
+        },
+        "results": {
+            "runtime_sec": 43.80965995788574
+        }
+    },
+    {
+        "config": {
+            "name": "filesearch_benchmark",
+            "cpus": 8,
+            "passes": 10,
+            "cgroup_size": 1073741824,
+            "cgroup_name": "cache_ext_test",
+            "benchmark": "filesearch",
+            "iteration": 1
+        },
+        "results": {
+            "runtime_sec": 24.680588006973267
+        }
+    }
+]

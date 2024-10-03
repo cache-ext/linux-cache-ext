@@ -105,44 +105,6 @@ def parse_io_trace_bench_results(stdout: str) -> Dict:
     return results
 
 
-class CacheExtPolicy:
-    def __init__(self, cgroup: str, loader_path: str, watch_dir: str):
-        self.cgroup_path = "/sys/fs/cgroup/%s" % cgroup
-        self.loader_path = loader_path
-        self.watch_dir = watch_dir
-        self.has_started = False
-        self._policy_thread = None
-
-    def start(self):
-        if self.has_started:
-            raise Exception("Policy already started")
-        self.has_started = True
-        cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
-        log.info("Starting policy thread: %s", cmd)
-        self._policy_thread = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        sleep(2)
-        if self._policy_thread.poll() is not None:
-            raise Exception(
-                "Policy thread exited unexpectedly: %s"
-                % self._policy_thread.stderr.read()
-            )
-
-    def stop(self):
-        if not self.has_started:
-            raise Exception("Policy not started")
-        cmd = ["sudo", "kill", "-2", str(self._policy_thread.pid)]
-        run(cmd)
-        out, err = self._policy_thread.communicate()
-        with suppress(subprocess.CalledProcessError):
-            run(["sudo", "rm", "/sys/fs/bpf/cache_ext/scan_pids"])
-        log.info("Policy thread stdout: %s", out)
-        log.info("Policy thread stderr: %s", err)
-        self.has_started = False
-        self._policy_thread = None
-
-
 class IOTraceBenchmark(BenchmarkFramework):
 
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):

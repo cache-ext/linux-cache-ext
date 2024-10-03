@@ -17,7 +17,8 @@ python3 bench_leveldb.py \
     --cpu 8 \
     --policy-loader ./page_cache_ext_sampling.out \
     --results-file ./lfu_ycsb_results.json \
-    --leveldb-db /mydata/leveldb_db
+    --leveldb-db /mydata/leveldb_db \
+    --benchmark ycsb_a,ycsb_b,ycsb_c
 
 # Benchmark LevelDB with mixed GET-SCAN
 python3 bench_leveldb.py \
@@ -35,3 +36,10 @@ python3 bench_io_trace.py \
     --policy-loader ./page_cache_ext_sampling.out \
     --results-file io_trace_results.json  \
     --trace-data-dir $TRACE_DIR
+
+# Benchmark filesearch workload with MRU
+python3 bench_filesearch.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_mru.out \
+    --results-file filesearch_results.json  \
+    --data-dir /mydata/filesearch_data

@@ -102,7 +102,7 @@ int main(int argc, char **argv)
 
 	// Initialize inode_watchlist map
 	ret = initialize_watch_dir_map(args.watch_dir,
-				       bpf_map__fd(skel->maps.inode_watchlist));
+				       bpf_map__fd(skel->maps.inode_watchlist), false);
 
 	// Pin scan_pids map
 	ret = bpf_map__pin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");

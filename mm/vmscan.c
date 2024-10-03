@@ -6478,7 +6478,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	// TODO: nr[LRU_INACTIVE_FILE] is actually the number of pages to scan, not
 	// the number of pages to evict. Might need to fix this in the future.
 	if (nr[LRU_INACTIVE_FILE] > 1500) {
-		pr_warn("cache_ext: Got a lot of pages to evict: %lu. Is that normal?\n",
+		pr_debug("cache_ext: Got a lot of pages to evict: %lu. Is that normal?\n",
 			nr[LRU_INACTIVE_FILE]);
 	}
 	// If we more or less evicted all the pages we wanted, exit.
@@ -6486,18 +6486,24 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	// - No swap.
 	// - Unmaintained active list is ok.
 
-	unsigned long long threshold_pct = 90;
+	unsigned long long threshold_pct = 80;
 	unsigned long long reclaim_pct = 0;
-	if (nr_to_evict > 0) reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
-	// TODO: Check the nr_reclaimed is less than nr_to_evict
-	if (reclaim_pct > threshold_pct) {
-		pr_debug("Reclaimed more than %llu%% of the pages we wanted to evict. Finishing reclaim.\n", threshold_pct);
-		blk_finish_plug(&plug);
-		sc->nr_reclaimed += nr_reclaimed;
-		sc->nr_scanned += nr_reclaimed;
-		return;
+	if (nr_to_evict > 0) {
+		reclaim_pct = 100 * nr_reclaimed / nr_to_evict;
 	} else {
-		pr_debug("Reclaimed less than %llu%% of the pages we wanted to evict. Reclaiming more.\n", threshold_pct);
+		pr_debug("cache_ext: nr_to_evict is 0. Setting reclaim_pct to 100\n");
+		reclaim_pct = 100;
+	};
+	// TODO: Check the nr_reclaimed is less than nr_to_evict
+	sc->nr_reclaimed += nr_reclaimed;
+	sc->nr_scanned += nr_reclaimed;
+	if (reclaim_pct > threshold_pct) {
+		// pr_debug("Reclaimed more than %llu%% of the pages we wanted to evict. Finishing reclaim.\n", threshold_pct);
+		blk_finish_plug(&plug);
+		return;
+	}
+	else {
+		pr_debug("Reclaimed less than %llu%% (%llu) of the pages we wanted to evict. Reclaiming more.\n", threshold_pct, reclaim_pct);
 	}
 	/***********************************************************************/
 
