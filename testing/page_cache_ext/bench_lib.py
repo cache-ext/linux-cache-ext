@@ -515,8 +515,7 @@ def parse_strings_string(s: str) -> List[str]:
     res = []
     for part in parts:
         part = part.strip()
-        if part:
-            res.append(part)
+        res.append(part)
     return res
 
 

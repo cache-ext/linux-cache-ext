@@ -26,6 +26,8 @@ def parse_args():
                                 help="Enable debug mode for installation")
     install_parser.add_argument("--no-clang", action="store_true", default=False,
                                 help="Use clang as the compiler")
+    install_parser.add_argument("--enable-mglru", action="store_true",
+                                help="Enable MGLRU")
 
     return parser.parse_args()
 
@@ -69,6 +71,17 @@ def add_debug_config_options():
     }
     edit_config_file(debug_config_options)
 
+
+def add_mglru_config_options():
+    # CONFIG_LRU_GEN=y
+    # CONFIG_LRU_GEN_ENABLED=y
+    mglru_config_options = {
+        "CONFIG_LRU_GEN": "y",
+        "CONFIG_LRU_GEN_ENABLED": "y",
+    }
+    edit_config_file(mglru_config_options)
+
+
 def make(args: List[str] = [], env=None, parallel=True, sudo=False):
     cmd = ["make"]
     if sudo:
@@ -109,6 +122,8 @@ def main():
         add_default_config_options()
         if args.debug:
             add_debug_config_options()
+        if args.enable_mglru:
+            add_mglru_config_options()
         make(env=llvm_env)
         run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
         make(["modules_install"], env=llvm_env, sudo=True)

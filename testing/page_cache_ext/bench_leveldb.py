@@ -191,6 +191,12 @@ class LevelDBBenchmark(BenchmarkFramework):
             type=str,
             default="ycsb_a,ycsb_c",
         )
+        parser.add_argument(
+            "--fadvise-hints",
+            type=str,
+            default=",SEQUENTIAL,NOREUSE,DONTNEED",
+            help="Specify the fadvise hints to use for the baseline cgroup",
+        )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
         configs = add_config_option("enable_mmap", [False], configs)
@@ -204,8 +210,20 @@ class LevelDBBenchmark(BenchmarkFramework):
         )
         configs = add_config_option(
             # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
         )
+        # For baseline cgroup only, add fadvise options
+        fadvise_hints = parse_strings_string(self.args.fadvise_hints)
+        new_configs = []
+        for config in configs:
+            if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
+                for fadvise in fadvise_hints:
+                    new_config = config.copy()
+                    new_config["fadvise"] = fadvise
+                    new_configs.append(new_config)
+            else:
+                new_configs.append(config)
+        configs = new_configs
         configs = add_config_option("iteration", list(range(1, 2)), configs)
         return configs
 
@@ -251,8 +269,8 @@ class LevelDBBenchmark(BenchmarkFramework):
             extra_envs["ENABLE_BPF_SCAN_MAP"] = "1"
         if config["enable_mmap"]:
             extra_envs["LEVELDB_MAX_MMAPS"] = "10000"
-        # if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
-        #     extra_envs["ENABLE_SCAN_FADVISE"] = "1"
+        if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP and config["fadvise"] != "":
+            extra_envs["ENABLE_SCAN_FADVISE"] = config["fadvise"]
         return extra_envs
 
     def after_benchmark(self, config):

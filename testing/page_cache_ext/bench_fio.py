@@ -29,7 +29,7 @@ class FioBenchmark(BenchmarkFramework):
             "cgroup_size", [5 * GiB, 10 * GiB, 20 * GiB, 30 * GiB], configs
         )
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
         )
 
         return configs

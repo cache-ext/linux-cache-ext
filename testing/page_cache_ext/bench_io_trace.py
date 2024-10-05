@@ -158,7 +158,7 @@ class IOTraceBenchmark(BenchmarkFramework):
         )
         configs = add_config_option(
             # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
         )
         configs = add_config_option("iteration", list(range(1, 2)), configs)
         return configs
