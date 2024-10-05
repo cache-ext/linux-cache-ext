@@ -1,0 +1,17 @@
+[
+    {
+        "config": {
+            "name": "filesearch_benchmark",
+            "cpus": 8,
+            "passes": 10,
+            "cgroup_size": 1073741824,
+            "cgroup_name": "baseline_test",
+            "benchmark": "filesearch",
+            "mglru": true,
+            "iteration": 1
+        },
+        "results": {
+            "runtime_sec": 44.225725412368774
+        }
+    }
+]

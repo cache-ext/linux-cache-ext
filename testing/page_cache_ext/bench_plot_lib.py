@@ -170,6 +170,9 @@ def plot_groupped_bars(
 
 def make_name(config: Dict) -> str:
     if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
+        mglru = config.get("mglru", False)
+        if mglru:
+            return "MGLRU"
         fadvise = config.get("fadvise", None)
         if fadvise == "DONTNEED":
             return "FADVISE_DONTNEED"
