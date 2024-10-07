@@ -49,7 +49,8 @@ class FioBenchmark(BenchmarkFramework):
 
     def before_benchmark(self, config):
         log.info("Startin to measure CPU usage")
-        psutil.cpu_percent()
+        # Get the cpu usage of the the first n cpus used by the benchmark
+        psutil.cpu_percent(percpu=True)
 
     def benchmark_cmd(self, config):
         cmd = [
@@ -73,7 +74,7 @@ class FioBenchmark(BenchmarkFramework):
 
     def after_benchmark(self, config):
         log.info("Stopping CPU usage measurement")
-        self.cpu_usage = psutil.cpu_percent()
+        self.cpu_usage = sum(psutil.cpu_percent(percpu=True)[:config["cpus"]])
         log.info("Deleting cgroup %s", config["cgroup_name"])
         delete_cgroup(config["cgroup_name"])
 
