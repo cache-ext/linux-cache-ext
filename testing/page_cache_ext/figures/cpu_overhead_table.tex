@@ -3,13 +3,14 @@
 \caption{fio microbenchmark results to measure CPU overhead of 
 ame per IO operation.}
 \label{tab:eval-cpu-overhead}
-\begin{tabular}{llll}
+\begin{tabular}{lllll}
 \toprule
-Cgroup Size & Baseline & cache\_ext & Overhead (\%) \\
+Cgroup Size & Baseline & Baseline (MGLRU) & cache\_ext & Overhead (\%) \\
 \midrule
-      5 GiB &   215.05 &    236.51 &        9.07\% \\
-     10 GiB &   206.02 &    221.14 &        6.84\% \\
-     30 GiB &   194.57 &    198.01 &        1.74\% \\
+      5 GiB &  3437.99 &          3415.67 &   3654.76 &        5.93\% \\
+     10 GiB &  3122.63 &          3095.72 &   3272.56 &        4.58\% \\
+     20 GiB &  2949.85 &          2919.26 &   2994.59 &        1.49\% \\
+     30 GiB &  2948.64 &          2926.64 &   2991.29 &        1.43\% \\
 \bottomrule
 \end{tabular}
 \end{table}
