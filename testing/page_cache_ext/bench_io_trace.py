@@ -148,19 +148,19 @@ class IOTraceBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
-        configs = add_config_option("runtime_seconds", [60], configs)
-        configs = add_config_option("warmup_runtime_seconds", [120], configs)
+        configs = add_config_option("runtime_seconds", [180], configs)
+        configs = add_config_option("warmup_runtime_seconds", [60], configs)
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
         configs = add_config_option(
-            "cgroup_size", [10 * GiB, 15 * GiB], configs
+            "cgroup_size", [15 * GiB], configs
         )
         configs = add_config_option(
-            # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
+            # "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
         )
-        configs = add_config_option("iteration", list(range(1, 2)), configs)
+        configs = add_config_option("iteration", list(range(1, 15)), configs)
         return configs
 
     def benchmark_prepare(self, config):
@@ -216,7 +216,7 @@ def main():
     global log
     ulimit(1000000)
     # To ensure that writeback keeps up with the benchmark
-    set_sysctl("vm.dirty_background_ratio", 1)
+    set_sysctl("vm.dirty_background_ratio", 5)
     set_sysctl("vm.dirty_ratio", 30)
     io_trace_bench = IOTraceBenchmark()
     # Check that trace data dir exists

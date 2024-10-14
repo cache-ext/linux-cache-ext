@@ -32,7 +32,7 @@ char _license[] SEC("license") = "GPL";
 #define MAX_PAGES (1 << 20)
 
 struct folio_metadata {
-	u64 accesses;
+	u64 last_access_time;
 };
 
 struct {
@@ -81,6 +81,7 @@ char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 __u64 list_size = 0;
 int APP_TYPE = LEVELDB;
 
+#ifdef STATS_ENABLED
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	// bpf_printk("update_stat!\n");
 	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
@@ -93,6 +94,9 @@ inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 		__sync_fetch_and_add(counter, delta);
 	}
 }
+#else
+inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {}
+#endif
 
 inline u64 get_sampling_list()
 {
@@ -169,7 +173,7 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 
 	// Create folio metadata
 	u64 key = (u64)folio;
-	struct folio_metadata new_meta = { .accesses = 1 };
+	struct folio_metadata new_meta = { .last_access_time = bpf_ktime_get_ns() };
 	bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY);
 }
 
@@ -198,7 +202,8 @@ void BPF_STRUCT_OPS(sampling_folio_accessed, struct folio *folio)
 			return;
 		}
 	}
-	__sync_fetch_and_add(&meta->accesses, 1);
+	meta->last_access_time = bpf_ktime_get_ns();
+	// __sync_fetch_and_add(&meta->accesses, 1);
 }
 
 void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
@@ -247,7 +252,7 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 		bpf_printk("page_cache_ext: Failed to get metadata\n");
 		return 0;
 	}
-	score = meta_a->accesses;
+	score = meta_a->last_access_time;
 	if (APP_TYPE == LEVELDB) {
 		// In leveldb, the index block is at the end of the file.
 		bool is_last_page = is_last_page_in_file(a->folio);
@@ -260,9 +265,9 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) {
 		return -1;
 	}
-	// if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
-	// 	return -1;
-	// }
+	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
+		return -1;
+	}
 	return score;
 }
 

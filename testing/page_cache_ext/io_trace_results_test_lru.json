@@ -1,0 +1,66 @@
+[
+    {
+        "config": {
+            "name": "iotrace_benchmark",
+            "cpus": 8,
+            "runtime_seconds": 180,
+            "warmup_runtime_seconds": 60,
+            "benchmark": "trace_cluster1_16TB_20240115_data-00052-of-00100",
+            "cgroup_size": 16106127360,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 31203.7,
+            "read_throughput_avg": 68327.68,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 99531.38,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 91062.34,
+            "insert_latency_p99": 108930.17,
+            "read_latency_avg": 69787.04,
+            "latency_avg": 69787.04,
+            "read_latency_p99": 148926.64,
+            "latency_p99": 148926.64,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "iotrace_benchmark",
+            "cpus": 8,
+            "runtime_seconds": 180,
+            "warmup_runtime_seconds": 60,
+            "benchmark": "trace_cluster1_16TB_20240115_data-00052-of-00100",
+            "cgroup_size": 16106127360,
+            "cgroup_name": "cache_ext_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 23951.62,
+            "read_throughput_avg": 64832.3,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 88783.92,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 92938.42,
+            "insert_latency_p99": 612749.71,
+            "read_latency_avg": 83691.95,
+            "latency_avg": 83691.95,
+            "read_latency_p99": 363572.0,
+            "latency_p99": 363572.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]

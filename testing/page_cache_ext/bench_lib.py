@@ -317,6 +317,11 @@ def exists_config_in_results(results: List[BenchRun], config: Dict) -> bool:
     return False
 
 
+def results_select(results: List[BenchRun], config_match: Dict) -> List[BenchRun]:
+    # Select results based on partial config match
+    return [r for r in results
+            if config_match.items() <= r.config.items()]
+
 def single_result_select(results: List[BenchRun], config_match: Dict) -> BenchRun:
     # Select results based on partial config match
     matches = [r for r in results
