@@ -27,7 +27,7 @@ python3 bench_leveldb.py \
     --results-file ./baseline_lfu_ycsb_results.json \
     --leveldb-db /mydata/leveldb_db \
     --fadvise-hints "" \
-    --benchmark ycsb_a,ycsb_b,ycsb_c
+    --benchmark ycsb_a,ycsb_b,ycsb_c,ycsb_d,ycsb_f
 
 # Benchmark Google IO traces
 # TRACE_DIR="google_traces/data_cluster1_16TB_20240115_data-00000-of-00100"

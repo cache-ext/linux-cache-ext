@@ -72,12 +72,13 @@ def add_debug_config_options():
     edit_config_file(debug_config_options)
 
 
-def add_mglru_config_options():
+def add_mglru_config_options(enabled=False):
     # CONFIG_LRU_GEN=y
     # CONFIG_LRU_GEN_ENABLED=y
+    option = "y" if enabled else "n"
     mglru_config_options = {
-        "CONFIG_LRU_GEN": "y",
-        "CONFIG_LRU_GEN_ENABLED": "y",
+        "CONFIG_LRU_GEN": option,
+        "CONFIG_LRU_GEN_ENABLED": option,
     }
     edit_config_file(mglru_config_options)
 
@@ -122,8 +123,7 @@ def main():
         add_default_config_options()
         if args.debug:
             add_debug_config_options()
-        if args.enable_mglru:
-            add_mglru_config_options()
+        add_mglru_config_options(args.enable_mglru)
         make(env=llvm_env)
         run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
         make(["modules_install"], env=llvm_env, sudo=True)
