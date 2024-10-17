@@ -337,6 +337,11 @@ def bench_plot_groupped_results(
         y_values.append(ys)
 
     print(y_values)
+    for idx in range(len(y_values[0])):
+        values_for_bench = [ys[idx] for ys in y_values]
+        values_for_bench_normalized = list(
+            map(lambda x: "%.2f%%" % (x / values_for_bench[0] * 100), values_for_bench))
+        print("Values for bench %d: %s" % (idx, values_for_bench_normalized))
     print(names)
 
     gpplot = GrouppedBarPlot(

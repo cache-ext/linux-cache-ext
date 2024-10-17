@@ -49,13 +49,6 @@ struct {
 	__uint(max_entries, 1);
 } sampling_list_map SEC(".maps");
 
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u64);
-	__uint(max_entries, 1);
-} is_first_eviction SEC(".maps");
-
 #define MAX_STAT_NAME_LEN 256
 
 struct {
@@ -78,7 +71,6 @@ char STAT_EVICTED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "evicted_scan_pages";
 char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 
 /* Counter for list size */
-__u64 list_size = 0;
 int APP_TYPE = LEVELDB;
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
@@ -162,7 +154,6 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 			"page_cache_ext: Failed to add folio to sampling_list\n");
 		return;
 	}
-	__sync_fetch_and_add(&list_size, 1);
 	dbg_printk("page_cache_ext: Added folio to sampling_list\n");
 
 	update_stat(&STAT_TOTAL_PAGES, 1);
@@ -207,7 +198,6 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 		"page_cache_ext: Hi from the sampling_folio_evicted hook! :D\n");
 	int ret = bpf_cache_ext_list_del(folio);
 
-	__sync_fetch_and_add(&list_size, -1);
 	u64 key = (u64)folio;
 	bpf_map_delete_elem(&folio_metadata_map, &key);
 	update_stat(&STAT_TOTAL_PAGES, -1);
@@ -260,9 +250,9 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) {
 		return -1;
 	}
-	// if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
-	// 	return -1;
-	// }
+	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
+		return -1;
+	}
 	return score;
 }
 
@@ -271,12 +261,6 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 		    struct mem_cgroup *memcg)
 {
 	int zero = 0, one = 1;
-	u64 *first_eviction = bpf_map_lookup_elem(&is_first_eviction, &zero);
-	if (first_eviction == NULL || *first_eviction == 0) {
-		bpf_map_update_elem(&is_first_eviction, &zero, &one, BPF_ANY);
-		bpf_printk("page_cache_ext: First eviction, list size is %llu\n",
-			   __sync_fetch_and_add(&list_size, 0));
-	}
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
 	u64 sampling_list = get_sampling_list();
@@ -287,7 +271,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.sample_size = 10,
+		.sample_size = 40,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);
