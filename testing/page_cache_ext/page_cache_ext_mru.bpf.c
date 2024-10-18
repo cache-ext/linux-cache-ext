@@ -73,18 +73,12 @@ void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
 		return;
 	}
 
-	ret = bpf_cache_ext_list_del(folio);
+	ret = bpf_cache_ext_list_move(mru_list, folio, false);
 	if (ret != 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to delete folio from mru_list\n");
+		bpf_printk("page_cache_ext: Failed to move folio to mru_list head\n");
 		return;
 	}
 
-	ret = bpf_cache_ext_list_add(mru_list, folio);
-	if (ret != 0) {
-		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
-		return;
-	}
 	dbg_printk("page_cache_ext: Moved folio to mru_list tail\n");
 }
 

@@ -104,6 +104,34 @@ int cache_ext_list_add_tail(struct cache_ext_list *list, struct folio *folio)
 	return __cache_ext_list_add_impl(list, folio, true);
 }
 
+int cache_ext_list_move(struct cache_ext_list *list, struct folio *folio,
+			bool tail)
+{
+	struct valid_folios_set *valid_folios_set =
+		folio_to_valid_folios_set(folio);
+	spinlock_t *bucket_lock =
+		valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+	spin_lock(bucket_lock);
+	struct valid_folio *valid_folio = valid_folios_lookup(folio);
+	if (!valid_folio) {
+		spin_unlock(bucket_lock);
+		return -1;
+	}
+
+	// Get the global list lock
+	cache_ext_ds_registry_write_lock(folio);
+
+	// Add the node to the new list
+	if (tail)
+		list_move_tail(&valid_folio->cache_ext_node->node, &list->head);
+	else
+		list_move(&valid_folio->cache_ext_node->node, &list->head);
+
+	cache_ext_ds_registry_write_unlock(folio);
+	spin_unlock(bucket_lock);
+	return 0;
+}
+
 int cache_ext_list_del(struct folio *folio)
 {
 	struct valid_folios_set *valid_folios_set =
@@ -221,6 +249,17 @@ int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio)
 	return cache_ext_list_add_tail(list_ptr, folio);
 };
 
+int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail)
+{
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
+		cache_ext_ds_registry_from_folio(folio), list);
+	if (!list_ptr) {
+		return -1;
+	}
+
+	return cache_ext_list_move(list_ptr, folio, tail);
+};
+
 int bpf_cache_ext_list_del(struct folio *folio)
 {
 	return cache_ext_list_del(folio);
@@ -329,6 +368,7 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 BTF_SET8_START(cache_ext_list_ops)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_move)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
