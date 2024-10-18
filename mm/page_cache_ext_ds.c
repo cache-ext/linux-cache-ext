@@ -531,7 +531,7 @@ void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg)
 
 // BPF API
 
-u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg)
+__bpf_kfunc u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg)
 {
 	return (u64)cache_ext_ds_registry_new_list(memcg);
 }
