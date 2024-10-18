@@ -365,6 +365,15 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	return 0;
 }
 
+enum cache_ext_list_ops_type {
+	KF_bpf_cache_ext_list_add,
+	KF_bpf_cache_ext_list_add_tail,
+	KF_bpf_cache_ext_list_del,
+	KF_bpf_cache_ext_list_iterate,
+	KF_bpf_cache_ext_list_sample,
+	KF_bpf_cache_ext_list_move,
+};
+
 BTF_SET8_START(cache_ext_list_ops)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
@@ -374,15 +383,22 @@ BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_move)
 BTF_SET8_END(cache_ext_list_ops)
 
-// TODO: Change these array indices to #defines
+BTF_ID_LIST(cache_ext_list_ops_list)
+BTF_ID(func, bpf_cache_ext_list_add)
+BTF_ID(func, bpf_cache_ext_list_add_tail)
+BTF_ID(func, bpf_cache_ext_list_del)
+BTF_ID(func, bpf_cache_ext_list_iterate)
+BTF_ID(func, bpf_cache_ext_list_sample)
+BTF_ID(func, bpf_cache_ext_list_move)
+
 noinline bool cache_ext_is_callback_calling_kfunc_iterate(u32 btf_id)
 {
-	return (btf_id == cache_ext_list_ops.pairs[3].id) ;
+	return (btf_id == cache_ext_list_ops_list[KF_bpf_cache_ext_list_iterate]);
 }
 
 noinline bool cache_ext_is_callback_calling_kfunc_sample(u32 btf_id)
 {
-	return (btf_id == cache_ext_list_ops.pairs[4].id);
+	return (btf_id == cache_ext_list_ops_list[KF_bpf_cache_ext_list_sample]);
 }
 
 static const struct btf_kfunc_id_set cache_ext_kfunc_set_list_ops = {
