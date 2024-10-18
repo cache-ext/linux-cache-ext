@@ -45,7 +45,7 @@ inline bool is_folio_relevant(struct folio *folio)
 	__uint(max_entries, 1);
 } mru_list_map SEC(".maps");*/
 
-u64 mru_list;
+__u64 mru_list;
 
 /*inline u64 get_mru_list()
 {
