@@ -228,7 +228,7 @@ int cache_ext_list_free(struct cache_ext_list *list)
 
 // BPF API
 
-int bpf_cache_ext_list_add(u64 list, struct folio *folio)
+__bpf_kfunc int bpf_cache_ext_list_add(u64 list, struct folio *folio)
 {
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
 		cache_ext_ds_registry_from_folio(folio), list);
@@ -238,7 +238,7 @@ int bpf_cache_ext_list_add(u64 list, struct folio *folio)
 	return cache_ext_list_add(list_ptr, folio);
 };
 
-int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio)
+__bpf_kfunc int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio)
 {
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
 		cache_ext_ds_registry_from_folio(folio), list);
@@ -249,7 +249,7 @@ int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio)
 	return cache_ext_list_add_tail(list_ptr, folio);
 };
 
-int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail)
+__bpf_kfunc int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail)
 {
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(
 		cache_ext_ds_registry_from_folio(folio), list);
@@ -260,12 +260,12 @@ int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail)
 	return cache_ext_list_move(list_ptr, folio, tail);
 };
 
-int bpf_cache_ext_list_del(struct folio *folio)
+__bpf_kfunc int bpf_cache_ext_list_del(struct folio *folio)
 {
 	return cache_ext_list_del(folio);
 };
 
-int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
+__bpf_kfunc int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 			       int(iter_fn)(int idx,
 					    struct cache_ext_list_node *node),
 			       struct page_cache_ext_eviction_ctx *ctx)
@@ -278,7 +278,7 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
 };
 
-int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
+__bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      s64(score_fn)(struct cache_ext_list_node *a),
 			      struct sampling_options *opts,
 				  struct page_cache_ext_eviction_ctx *ctx)
