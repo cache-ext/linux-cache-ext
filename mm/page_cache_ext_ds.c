@@ -368,12 +368,13 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 BTF_SET8_START(cache_ext_list_ops)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_add_tail)
-BTF_ID_FLAGS(func, bpf_cache_ext_list_move)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_move)
 BTF_SET8_END(cache_ext_list_ops)
 
+// TODO: Change these array indices to #defines
 noinline bool cache_ext_is_callback_calling_kfunc_iterate(u32 btf_id)
 {
 	return (btf_id == cache_ext_list_ops.pairs[3].id) ;
