@@ -42,13 +42,6 @@ struct {
 	__uint(max_entries, 4000000);
 } folio_metadata_map SEC(".maps");
 
-/*struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u64);
-	__uint(max_entries, 1);
-} sampling_list_map SEC(".maps");*/
-
 __u64 sampling_list;
 
 #define MAX_STAT_NAME_LEN 256
@@ -88,17 +81,6 @@ inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	}
 }
 
-/*inline u64 get_sampling_list()
-{
-	int zero = 0;
-	u64 *sampling_list;
-	sampling_list = bpf_map_lookup_elem(&sampling_list_map, &zero);
-	if (!sampling_list) {
-		return 0;
-	}
-	return *sampling_list;
-}*/
-
 inline bool is_folio_relevant(struct folio *folio)
 {
 	if (!folio) {
@@ -134,7 +116,6 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(sampling_init, struct mem_cgroup *memcg)
 	}
 	bpf_printk("page_cache_ext: Created sampling_list: %llu\n",
 		   sampling_list);
-	//bpf_map_update_elem(&sampling_list_map, &zero, &sampling_list, BPF_ANY);
 	return 0;
 }
 
@@ -145,11 +126,7 @@ void BPF_STRUCT_OPS(sampling_folio_added, struct folio *folio)
 	if (!is_folio_relevant(folio)) {
 		return;
 	}
-	//u64 sampling_list = get_sampling_list();
-	if (sampling_list == 0) {
-		bpf_printk("page_cache_ext: Failed to get sampling_list\n");
-		return;
-	}
+
 	int ret = bpf_cache_ext_list_add_tail(sampling_list, folio);
 	if (ret != 0) {
 		bpf_printk(
@@ -265,12 +242,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	int zero = 0, one = 1;
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
-	//u64 sampling_list = get_sampling_list();
-	if (sampling_list == 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to get sampling_list on eviction path\n");
-		return;
-	}
+
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
 		.sample_size = 40,
