@@ -55,7 +55,7 @@ struct {
 
 /* App type for specific optimizations */
 enum App {
-	GENERIC,
+	GENERIC_APP,
 	LEVELDB,
 };
 
@@ -108,7 +108,6 @@ inline bool is_folio_relevant(struct folio *folio)
 s32 BPF_STRUCT_OPS_SLEEPABLE(sampling_init, struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the sampling_init hook! :D\n");
-	int zero = 0;
 	sampling_list = bpf_cache_ext_ds_registry_new_list(memcg);
 	if (sampling_list == 0) {
 		bpf_printk("page_cache_ext: Failed to create sampling_list\n");
@@ -175,7 +174,10 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 {
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_folio_evicted hook! :D\n");
-	int ret = bpf_cache_ext_list_del(folio);
+	if (bpf_cache_ext_list_del(folio)) {
+		bpf_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
+		return;
+	}
 
 	u64 key = (u64)folio;
 	bpf_map_delete_elem(&folio_metadata_map, &key);
@@ -239,11 +241,9 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 		    struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
 {
-	int zero = 0, one = 1;
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
 
-	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
 		.sample_size = 40,
 	};

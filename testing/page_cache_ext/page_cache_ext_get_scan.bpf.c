@@ -325,7 +325,6 @@ void BPF_STRUCT_OPS(mixed_evict_folios,
 		    struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
 {
-	int zero = 0, one = 1;
 	int sampling_rate = 5;
 	dbg_printk(
 		"page_cache_ext: Hi from the mixed_evict_folios hook! :D\n");

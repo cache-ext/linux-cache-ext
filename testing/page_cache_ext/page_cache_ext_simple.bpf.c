@@ -56,14 +56,14 @@ __inline__ bool is_stop()
 SEC("tracepoint/filemap/mm_filemap_delete_from_page_cache")
 int cachestream__mm_filemap_delete_from_page_cache(void *ctx)
 {
-	struct trace_event_raw_mm_filemap_op_page_cache *args = ctx;
+	// struct trace_event_raw_mm_filemap_op_page_cache *args = ctx;
 	return 0;
 }
 
 SEC("tracepoint/filemap/mm_filemap_add_to_page_cache")
 int cachestream__mm_filemap_add_to_page_cache(void *ctx)
 {
-	struct trace_event_raw_mm_filemap_op_page_cache *args = ctx;
+	// struct trace_event_raw_mm_filemap_op_page_cache *args = ctx;
 	return 0;
 }
 

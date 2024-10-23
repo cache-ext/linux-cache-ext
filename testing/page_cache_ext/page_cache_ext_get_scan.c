@@ -32,16 +32,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
-__s64 get_inode_ino_from_path(char *path)
-{
-	struct stat sb;
-	if (stat(path, &sb) == -1) {
-		perror("stat");
-		return -1;
-	}
-	return sb.st_ino;
-}
-
 int main(int argc, char **argv)
 {
 	int ret;

@@ -39,7 +39,6 @@ __u64 mru_list;
 s32 BPF_STRUCT_OPS_SLEEPABLE(mru_init, struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_init hook! :D\n");
-	int zero = 0;
 	mru_list = bpf_cache_ext_ds_registry_new_list(memcg);
 	if (mru_list == 0) {
 		bpf_printk("page_cache_ext: Failed to create mru_list\n");
