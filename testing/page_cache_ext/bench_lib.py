@@ -43,7 +43,7 @@ class CacheExtPolicy:
         self._policy_thread = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        sleep(2)
+        sleep(5)
         if self._policy_thread.poll() is not None:
             raise Exception(
                 "Policy thread exited unexpectedly: %s"

@@ -285,7 +285,6 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		write_unlock(&registry->lock);
 		return -1;
 	}
-	write_unlock(&registry->lock);
 	// 1. For every n elements, evict the one with the min score
 	int select_every_nth = sample_size;
 	ctx->nr_folios_to_evict = 0;
@@ -319,7 +318,6 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	}
 
 	// 2. Put everything to the back of the list.
-	write_lock(&registry->lock);
 	list_splice_tail(&snipped_list, &list_ptr->head);
 
 	write_unlock(&registry->lock);
