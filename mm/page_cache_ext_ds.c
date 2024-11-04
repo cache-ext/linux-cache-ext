@@ -357,6 +357,7 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 
 		// min_node must be non-NULL here
 		ctx->folios_to_evict[ctx->nr_folios_to_evict] = min_node->folio;
+		ctx->scores[ctx->nr_folios_to_evict] = min_score;
 		ctx->nr_folios_to_evict++;
 	}
 
