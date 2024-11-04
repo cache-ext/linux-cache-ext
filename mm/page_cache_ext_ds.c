@@ -300,6 +300,7 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		write_unlock(&registry->lock);
 		return 0;
 	}
+
 	// Optimization: Snip the front of the list and select the pages without
 	// holding the lock.
 	// TODO: Get a reference to the page here and drop it after adding it back.
@@ -325,34 +326,36 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		return -1;
 	}
 	write_unlock(&registry->lock);
+
 	// 1. For every n elements, evict the one with the min score
-	int select_every_nth = sample_size;
 	ctx->nr_folios_to_evict = 0;
 	struct cache_ext_list_node *curr_node = list_first_entry(
 		&snipped_list, struct cache_ext_list_node, node);
+
 	for (int i = 0; i < ctx->request_nr_folios_to_evict; i++) {
-		struct cache_ext_list_node *min_node = NULL;
-		s64 min_score = S64_MAX;
-		for (int j = 0; j < select_every_nth; j++) {
-			if (curr_node == NULL) {
-				pr_warn("cache_ext: curr_node is NULL, ran out of folios to evict\n");
-				break;
-			}
-			s64 curr_score = score_fn(curr_node);
-			if (j == 0) {
-				min_node = curr_node;
-				min_score = curr_score;
-				continue;
-			} else if (curr_score < min_score) {
-				min_score = curr_score;
-				min_node = curr_node;
-			}
-			curr_node = list_next_entry(curr_node, node);
-		}
-		if (min_node == NULL) {
+		struct cache_ext_list_node *min_node = curr_node;
+		if (!min_node) {
 			pr_warn("cache_ext: min_node is NULL, ran out of folios to evict\n");
 			break;
 		}
+
+		s64 min_score = score_fn(curr_node);
+
+		for (int j = 1; j < sample_size; j++) {
+			curr_node = list_next_entry(curr_node, node);
+			if (!curr_node) {
+				pr_warn("cache_ext: curr_node is NULL, ran out of folios to evict\n");
+				break;
+			}
+
+			s64 curr_score = score_fn(curr_node);
+			if (curr_score < min_score) {
+				min_score = curr_score;
+				min_node = curr_node;
+			}
+		}
+
+		// min_node must be non-NULL here
 		ctx->folios_to_evict[ctx->nr_folios_to_evict] = min_node->folio;
 		ctx->nr_folios_to_evict++;
 	}
@@ -360,8 +363,8 @@ __bpf_kfunc int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 	// 2. Put everything to the back of the list.
 	write_lock(&registry->lock);
 	list_splice_tail(&snipped_list, &list_ptr->head);
-
 	write_unlock(&registry->lock);
+
 	return 0;
 }
 
