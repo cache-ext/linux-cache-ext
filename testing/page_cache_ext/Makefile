@@ -2,7 +2,7 @@
 # See: https://stackoverflow.com/questions/76035116/cannot-use-ebpf-kptr-ref-feature
 CLANG ?= clang-14
 BPFTOOL ?= bpftool
-CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g
+CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g -Wall
 USERSPACE_CFLAGS = -O2 -fsanitize=address -g
 USERSPACE_LINKER_FLAGS = -L/usr/local/lib64 -lbpf
 
@@ -39,7 +39,7 @@ $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
 
 .SECONDARY:
-%.bpf.o: %.bpf.c $(VMLINUX_H) dir_watcher.bpf.h
+%.bpf.o: %.bpf.c %.bpf.h $(VMLINUX_H) dir_watcher.bpf.h
 	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $< -o $@
 
 .SECONDARY:
