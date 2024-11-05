@@ -239,6 +239,18 @@ int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
 };
 
+// Declare a per-cpu array of folio pointers of
+#define MAX_SAMPLE_FOLIOS 2000
+DEFINE_PER_CPU(struct cache_ext_list_node *, sample_folios[MAX_SAMPLE_FOLIOS]);
+
+
+void __putback_list_nodes(struct cache_ext_list *list, struct cache_ext_list_node** sample_folios_arr, int size)
+{
+	for (int i = 0; i < size; i++) {
+		list_add_tail(&sample_folios_arr[i]->node, &list->head);
+	}
+}
+
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      s64(score_fn)(struct cache_ext_list_node *a),
 			      struct sampling_options *opts,
@@ -246,7 +258,15 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 {
 	// Select the first select_size elements with the lowest score out of
 	// sample_size elements in the given list.
-	__u32 sample_size = opts->sample_size;
+	int sample_size = opts->sample_size;
+	int num_folios_to_sample = ctx->request_nr_folios_to_evict * sample_size;
+	if (num_folios_to_sample > MAX_SAMPLE_FOLIOS) {
+		pr_warn("cache_ext: num_folios_to_sample is too large\n");
+		return -1;
+	}
+	int sample_folios_size = 0;
+
+	struct cache_ext_list_node **sample_folios_arr = this_cpu_ptr(sample_folios);
 
 	struct cache_ext_ds_registry *registry =
 		cache_ext_ds_registry_from_memcg(memcg);
@@ -261,42 +281,36 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		write_unlock(&registry->lock);
 		return 0;
 	}
-	// Optimization: Snip the front of the list and select the pages without
-	// holding the lock.
-	// TODO: Get a reference to the page here and drop it after adding it back.
-	LIST_HEAD(snipped_list);
-	struct cache_ext_list_node *list_node;
-	int snipped_list_size = 0;
-	int desired_snipped_list_size = sample_size * ctx->request_nr_folios_to_evict;
 
-	while (snipped_list_size < desired_snipped_list_size) {
+	// Optimization: Snip the elements we need and do the processing without
+	// holding the lock.
+	for (int i = 0; i < num_folios_to_sample; i++) {
 		if (list_empty(&list_ptr->head)) {
-			break;
+			pr_warn("cache_ext: ran out of folios to sample\n");
+			__putback_list_nodes(list_ptr, sample_folios_arr, sample_folios_size);
+			write_unlock(&registry->lock);
+			return -1;
 		}
-		list_node = list_first_entry(&list_ptr->head,
-					     struct cache_ext_list_node, node);
-		list_move(&list_node->node, &snipped_list);
-		snipped_list_size++;
+		struct cache_ext_list_node *node = list_first_entry(
+			&list_ptr->head, struct cache_ext_list_node, node);
+		sample_folios_arr[i] = node;
+		sample_folios_size++;
+		list_del(&node->node);
 	}
-	if (snipped_list_size < desired_snipped_list_size) {
-		pr_debug("cache_ext: Not enough elements in the list. List has %d but want %d\n",
-			snipped_list_size, desired_snipped_list_size);
-		list_splice(&snipped_list, &list_ptr->head);
-		write_unlock(&registry->lock);
-		return -1;
-	}
-	// 1. For every n elements, evict the one with the min score
-	int select_every_nth = sample_size;
+	write_unlock(&registry->lock);
+
 	ctx->nr_folios_to_evict = 0;
-	struct cache_ext_list_node *curr_node = list_first_entry(
-		&snipped_list, struct cache_ext_list_node, node);
+	int sample_folios_idx = 0;
 	for (int i = 0; i < ctx->request_nr_folios_to_evict; i++) {
 		struct cache_ext_list_node *min_node = NULL;
 		s64 min_score = S64_MAX;
-		for (int j = 0; j < select_every_nth; j++) {
-			if (curr_node == NULL) {
-				pr_warn("cache_ext: curr_node is NULL, ran out of folios to evict\n");
-				break;
+		for (int j = 0; j < sample_size; j++) {
+			struct cache_ext_list_node *curr_node = sample_folios_arr[sample_folios_idx];
+			sample_folios_idx++;
+			// Check if we reached the end of the list.
+			if (list_is_last(&curr_node->node, &list_ptr->head)) {
+				pr_warn("cache_ext: ran out of folios to evict\n");
+				goto finish;
 			}
 			s64 curr_score = score_fn(curr_node);
 			if (j == 0) {
@@ -316,10 +330,9 @@ int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		ctx->folios_to_evict[ctx->nr_folios_to_evict] = min_node->folio;
 		ctx->nr_folios_to_evict++;
 	}
-
-	// 2. Put everything to the back of the list.
-	list_splice_tail(&snipped_list, &list_ptr->head);
-
+finish:
+	// Put back the nodes we didn't evict.
+	__putback_list_nodes(list_ptr, sample_folios_arr, sample_folios_size);
 	write_unlock(&registry->lock);
 	return 0;
 }

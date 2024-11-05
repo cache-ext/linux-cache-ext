@@ -176,3 +176,5 @@ compile_commands.json
 
 # Binaries
 *.out
+
+perf.data*

@@ -85,7 +85,11 @@ static int bpf_page_cache_ext_reg(void *kdata)
 	}
 	pr_info("page_cache_ext: Calling init\n");
 	if (ops->init) {
-		ret = ops->init(memcg);
+		scoped_guard(irqsave) {
+			scoped_guard(preempt) {
+				ret = ops->init(memcg);
+			}
+		}
 		if (ret) {
 			pr_err("page_cache_ext: init failed with error code: %d\n",
 			       ret);

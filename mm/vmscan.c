@@ -6373,7 +6373,12 @@ static unsigned long __page_cache_ext_isolate_and_reclaim(struct lruvec *lruvec,
 
 		memset(&ctx, 0, sizeof(ctx));
 		ctx.request_nr_folios_to_evict = request_nr_to_evict_batch;
-		pcext_ops->evict_folios(&ctx, lruvec_memcg(lruvec));
+		// Protect against preemption and IRQs
+		scoped_guard(irqsave) {
+			scoped_guard(preempt) {
+				pcext_ops->evict_folios(&ctx, lruvec_memcg(lruvec));
+			}
+		}
 		if (ctx.nr_folios_to_evict > ARRAY_SIZE(ctx.folios_to_evict)) {
 			pr_debug("page_cache_ext: nr_folios_evicted bigger than array size!\n");
 			ret = 0;

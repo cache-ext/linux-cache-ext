@@ -933,13 +933,20 @@ unlock:
 
 
 	struct mem_cgroup *memcg = folio_memcg(folio);
-	/* page_cache_ext: Maintain the valid folios hashtable */
-	if (memcg->cache_ext_enabled)
-		valid_folios_add(folio);
 	/* page_cache_ext: folio_added hook */
-	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
-	if (pcext_ops != NULL && pcext_ops->folio_added != NULL)
-		pcext_ops->folio_added(folio);
+	// TODO: Error check this!
+	struct valid_folio *new = kmalloc(sizeof(struct valid_folio), GFP_KERNEL);
+	BUG_ON(!new);
+	/* page_cache_ext: Maintain the valid folios hashtable */
+	scoped_guard(irqsave) {
+		scoped_guard(preempt) {
+			if (memcg->cache_ext_enabled)
+				valid_folios_add(folio, new);
+			struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+			if (pcext_ops != NULL && pcext_ops->folio_added != NULL)
+				pcext_ops->folio_added(folio);
+		}
+	}
 
 	trace_mm_filemap_add_to_page_cache(folio);
 	return 0;

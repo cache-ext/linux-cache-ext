@@ -318,6 +318,7 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_read(struct file *file,
 ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	const char __user *user_buffer, size_t count, loff_t *offset) {
 	// Get path from userspace buffer
+	pr_info("cache_ext: Debug string to confirm kernel version");
 	struct cgroup *new_cgroup;
 	char new_cgroup_path[PATH_MAX];
 	char *new_cgroup_path_ptr;
@@ -341,8 +342,8 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 	}
 
 	// Change the cgroup pointer
+	WRITE_ONCE(page_cache_ext_enabled_cgroup.cgroup, new_cgroup);
 	write_lock(&page_cache_ext_enabled_cgroup.lock);
-	page_cache_ext_enabled_cgroup.cgroup = new_cgroup;
 	strncpy(page_cache_ext_enabled_cgroup.path, new_cgroup_path_ptr, PATH_MAX);
 	write_unlock(&page_cache_ext_enabled_cgroup.lock);
 
@@ -350,11 +351,7 @@ ssize_t procfile_page_cache_ext_enabled_cgroup_write(struct file *file,
 }
 
 bool page_cache_ext_cgroup_enabled(struct cgroup *cgroup) {
-	bool res;
-	read_lock(&page_cache_ext_enabled_cgroup.lock);
-	res = (cgroup == page_cache_ext_enabled_cgroup.cgroup);
-	read_unlock(&page_cache_ext_enabled_cgroup.lock);
-	return res;
+	return READ_ONCE(page_cache_ext_enabled_cgroup.cgroup) == cgroup;
 }
 
 
@@ -462,10 +459,7 @@ void free_valid_folios_set(struct valid_folios_set *valid_folios_set) {
 	vfree(valid_folios_set);
 }
 
-void valid_folios_add(struct folio *folio) {
-	// TODO: Error check this!
-	struct valid_folio *new = kmalloc(sizeof(struct valid_folio), GFP_KERNEL);
-	WARN_ON_ONCE(!new);
+void valid_folios_add(struct folio *folio, struct valid_folio *new) {
 	struct cache_ext_list_node *node = cache_ext_list_node_alloc(folio);
 	new->folio_ptr = folio_ptr_to_key(folio);
 	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);

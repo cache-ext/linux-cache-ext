@@ -98,7 +98,7 @@ struct valid_folio {
 // Function definitions for the valid_folios_set
 struct valid_folios_set* init_valid_folios_set(int node, uint64_t num_buckets);
 void free_valid_folios_set(struct valid_folios_set *valid_folios_set);
-void valid_folios_add(struct folio *folio);
+void valid_folios_add(struct folio *folio, struct valid_folio *new);
 void valid_folios_del(struct folio *folio);
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
 bool valid_folios_exists_unlocked(struct valid_folios_set *valid_folios_set, struct folio *folio);
