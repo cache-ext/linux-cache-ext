@@ -43,11 +43,11 @@ class CacheExtPolicy:
         self._policy_thread = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        sleep(2)
+        sleep(10)
         if self._policy_thread.poll() is not None:
             raise Exception(
                 "Policy thread exited unexpectedly: %s"
-                % self._policy_thread.stderr.read()
+                % self._policy_thread.stderr.read().decode("utf-8")
             )
 
     def stop(self):
@@ -58,8 +58,8 @@ class CacheExtPolicy:
         out, err = self._policy_thread.communicate()
         with suppress(subprocess.CalledProcessError):
             run(["sudo", "rm", "/sys/fs/bpf/cache_ext/scan_pids"])
-        log.info("Policy thread stdout: %s", out)
-        log.info("Policy thread stderr: %s", err)
+        log.info("Policy thread stdout: %s", out.decode("utf-8"))
+        log.info("Policy thread stderr: %s", err.decode("utf-8"))
         self.has_started = False
         self._policy_thread = None
 

@@ -49,7 +49,7 @@ class FileSearchBenchmark(BenchmarkFramework):
             "cgroup_size", [1 * GiB], configs
         )
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
         )
         configs = add_config_option("benchmark", ["filesearch"], configs)
         configs = add_config_option("iteration", list(range(1, 2)), configs)
@@ -84,6 +84,8 @@ class FileSearchBenchmark(BenchmarkFramework):
 
     def after_benchmark(self, config):
         self.end_time = time()
+        if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
+            self.cache_ext_policy.stop()
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = {"runtime_sec": self.end_time - self.start_time}
