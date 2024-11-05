@@ -21,6 +21,8 @@ static struct argp_option options[] = {
 	{ 0 },
 };
 
+static long num_reconfigurations;
+
 static volatile sig_atomic_t exiting;
 
 static void sig_handler(int signo) {
@@ -40,7 +42,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
-int parse_args(int argc, char **argv, struct cmdline_args *args) {
+static int parse_args(int argc, char **argv, struct cmdline_args *args) {
 	struct argp argp = { options, parse_opt, 0, 0 };
 	argp_parse(&argp, argc, argv, 0, 0, args);
 
@@ -57,7 +59,7 @@ int parse_args(int argc, char **argv, struct cmdline_args *args) {
  *
  * watch_dir_full_path must be able to hold PATH_MAX bytes.
  */
-int validate_watch_dir(const char *watch_dir, char *watch_dir_full_path) {
+static int validate_watch_dir(const char *watch_dir, char *watch_dir_full_path) {
 	// Does watch_dir exist?
 	if (access(watch_dir, F_OK) == -1) {
 		fprintf(stderr, "Directory does not exist: %s\n", watch_dir);
@@ -79,7 +81,7 @@ int validate_watch_dir(const char *watch_dir, char *watch_dir_full_path) {
 	return 0;
 }
 
-int handle_event(void *ctx, void *data, size_t data_sz) {
+static int handle_event(void *ctx, void *data, size_t data_sz) {
 	// Run BPF reconfigure program using BPF_PROG_RUN
 	int ret = 0;
 	int reconfigure_prog_fd = *(int *)ctx;
@@ -88,6 +90,8 @@ int handle_event(void *ctx, void *data, size_t data_sz) {
 		.sz = sizeof(opts),
 	};
 	
+	++num_reconfigurations;
+
 	ret = bpf_prog_test_run_opts(reconfigure_prog_fd, &opts);
 	if (ret)
 		perror("Failed to run reconfigure program");
@@ -175,7 +179,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	printf("Number of reconfigurations: %ld\n", num_reconfigurations);
+
 cleanup:
+	ring_buffer__free(events);
 	bpf_link__destroy(link);
 	cache_ext_lhd_bpf__destroy(skel);
 	return 0;

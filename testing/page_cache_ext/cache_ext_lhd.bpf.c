@@ -103,7 +103,7 @@ static inline u32 get_class_id(struct folio_metadata *data) {
 
 static inline struct lhd_class *get_class(struct folio_metadata *data) {
 	u32 class_id = get_class_id(data);
-	return &classes[class_id];
+	return &classes[class_id & NUM_CLASSES_MASK];
 }
 
 static inline u64 get_age(struct folio_metadata *data) {
@@ -126,7 +126,7 @@ static inline u64 get_hit_density(struct folio_metadata *data) {
 	if (!cls)
 		return -1;
 
-	return cls->hit_densities[age];
+	return cls->hit_densities[age & MAX_AGE_MASK];
 }
 
 static inline void update_class(struct lhd_class *class) {
@@ -174,37 +174,37 @@ static inline void adapt_age_coarsening(void) {
 			bpf_for(i, 0, NUM_CLASSES) {
 				struct lhd_class *cls = &classes[i];
 				int init_age = MAX_AGE >> (-delta);
-				int j;
+				u32 j;
 
 				bpf_for(j, init_age, MAX_AGE - 1) {
 					cls->hits[MAX_AGE - 1] += cls->hits[j];
 					cls->evictions[MAX_AGE - 1] = cls->evictions[j];
 				}
 				bpf_for(j, 2, MAX_AGE + 1) { // MAX_AGE -2 -> 0
-					int index = MAX_AGE - j;
-					cls->hits[index] = cls->hits[j >> (-delta)] / (1 << (-delta));
-					cls->evictions[index] = cls->evictions[j >> (-delta)] / (1 << (-delta));
+					u32 index = MAX_AGE - j;
+					cls->hits[index & MAX_AGE_MASK] = cls->hits[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
+					cls->evictions[index & MAX_AGE_MASK] = cls->evictions[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
 				}
 			}
 		} else if (delta > 0) {  // Compress
 			int i;
 			bpf_for(i, 0, NUM_CLASSES) {
 				struct lhd_class *cls = &classes[i];
-				int j;
+				u32 j;
 
 				bpf_for(j, 0, MAX_AGE >> delta) {
-					cls->hits[j] = cls->hits[j << delta];
-					cls->evictions[j] = cls->evictions[j << delta];
+					cls->hits[j & MAX_AGE_MASK] = cls->hits[(j << delta) & MAX_AGE_MASK];
+					cls->evictions[j & MAX_AGE_MASK] = cls->evictions[(j << delta) & MAX_AGE_MASK];
 					int k;
 					bpf_for(k, 1, (1 << delta)) {
-						cls->hits[j] += cls->hits[(j << delta) + k];
-						cls->evictions[j] += cls->evictions[(j << delta) + k];
+						cls->hits[j & MAX_AGE_MASK] += cls->hits[((j << delta) + k) & MAX_AGE_MASK];
+						cls->evictions[j & MAX_AGE_MASK] += cls->evictions[((j << delta) + k) & MAX_AGE_MASK];
 					}
 				}
 
 				bpf_for(j, MAX_AGE >> delta, MAX_AGE - 1) {
-					cls->hits[j] = 0;
-					cls->evictions[j] = 0;
+					cls->hits[j & MAX_AGE_MASK] = 0;
+					cls->evictions[j & MAX_AGE_MASK] = 0;
 				}
 			}
 		}
@@ -215,22 +215,23 @@ static inline void model_hit_density(void) {
 	int i;
 
 	bpf_for(i, 0, NUM_CLASSES) {
-		u64 total_hits = classes[i].hits[MAX_AGE - 1];
-		u64 total_events = total_hits + classes[i].evictions[MAX_AGE - 1];
+		struct lhd_class *cls = &classes[i];
+		u64 total_hits = cls->hits[MAX_AGE - 1];
+		u64 total_events = total_hits + cls->evictions[MAX_AGE - 1];
 		u64 lifetime_unconditoned = total_events;
 
 		int j;
 		bpf_for(j, 2, MAX_AGE + 1) {
-			int index = MAX_AGE - j;
+			u32 index = MAX_AGE - j;
 
-			total_hits += classes[i].hits[index];
-			total_events += classes[i].evictions[index];
+			total_hits += cls->hits[index & MAX_AGE_MASK];
+			total_events += cls->evictions[index & MAX_AGE_MASK];
 			lifetime_unconditoned += total_events;
 
 			if (total_events > TOTAL_EVENTS_THRESH) {
-				classes[i].hit_densities[index] = total_hits / lifetime_unconditoned;
+				cls->hit_densities[index & MAX_AGE_MASK] = total_hits / lifetime_unconditoned;
 			} else {
-				classes[i].hit_densities[index] = 0;
+				cls->hit_densities[index & MAX_AGE_MASK] = 0;
 			}
 		}
 	}
@@ -259,7 +260,7 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg)
 
 	lhd_list = bpf_cache_ext_ds_registry_new_list(memcg);
 	if (lhd_list == 0) {
-		bpf_printk("cache_ext: Failed to create lhd_list\n");
+		bpf_printk("cache_ext: init: Failed to create lhd_list\n");
 		return -1;
 	}
 	bpf_printk("cache_ext: Created lhd_list: %llu\n", lhd_list);
@@ -289,7 +290,7 @@ static s64 bpf_lhd_score_fn(struct cache_ext_list_node *a) {
 
 	struct folio_metadata *data = get_folio_metadata(a->folio);
 	if (!data) {
-		bpf_printk("cache_ext: Failed to get metadata\n");
+		bpf_printk("cache_ext: score_fn: Failed to get metadata\n");
 		return -1;
 	}
 
@@ -304,12 +305,16 @@ void BPF_STRUCT_OPS(lhd_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	};
 
 	if (bpf_cache_ext_list_sample(memcg, lhd_list, bpf_lhd_score_fn, &opts, eviction_ctx)) {
-		bpf_printk("cache_ext: Failed to sample\n");
+		bpf_printk("cache_ext: evict: Failed to sample\n");
 		return;
 	}
 
+	/*
+	 * Yields the following verifier error:
+	 * 	R2 is ptr_page_cache_ext_eviction_ctx invalid variable offset: off=272, var_off=(0x0; 0xf8)
+	 */
 	// Deal with recently_admitted folios
-	for (int i = 0; i < RECENTLY_ADMITTED_SIZE; i++) {
+	/*for (int i = 0; i < RECENTLY_ADMITTED_SIZE; i++) {
 		size_t index = (recently_admitted_head + i) % RECENTLY_ADMITTED_SIZE;
 		struct folio *folio = (struct folio *)recently_admitted[index];
 		if (!folio)
@@ -330,21 +335,24 @@ void BPF_STRUCT_OPS(lhd_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 		// TODO: improve this?
 		int j;
 		bpf_for(j, 0, eviction_ctx->nr_folios_to_evict) {
-			if (hit_density < eviction_ctx->scores[j]) {
-				eviction_ctx->folios_to_evict[j] = folio;
-				eviction_ctx->scores[j] = hit_density;
+			if (hit_density < eviction_ctx->scores[j & 31]) {
+				eviction_ctx->folios_to_evict[j & 31] = folio;
+				eviction_ctx->scores[j & 31] = hit_density;
 				break;
 			}
 		}
-	}
+	}*/
 }
 
 void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio)
 {
+	if (!is_folio_relevant(folio))
+		return;
+
 	u64 key = (u64)folio;
 	struct folio_metadata *data = bpf_map_lookup_elem(&folio_metadata_map, &key);
 	if (!data) {
-		bpf_printk("cache_ext: Failed to get metadata\n");
+		bpf_printk("cache_ext: accessed: Failed to get metadata\n");
 		return;
 	}
 
@@ -383,14 +391,14 @@ void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio)
 	struct lhd_class *cls;
 	struct folio_metadata *data = bpf_map_lookup_elem(&folio_metadata_map, &key);
 	if (!data) {
-		bpf_printk("cache_ext: Failed to get metadata\n");
+		bpf_printk("cache_ext: evicted: Failed to get metadata\n");
 		return;
 	}
 
 	age = get_age(data);
 	cls = get_class(data);
 	if (!cls) {
-		bpf_printk("cache_ext: Failed to get class\n");
+		bpf_printk("cache_ext: evicted: Failed to get class\n");
 		return;
 	}
 
@@ -406,7 +414,7 @@ void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio)
 
 	// Remove folio metadata
 	if (bpf_map_delete_elem(&folio_metadata_map, &key))
-		bpf_printk("cache_ext: Failed to delete metadata\n");
+		bpf_printk("cache_ext: evicted: Failed to delete metadata\n");
 }
 
 void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio)
@@ -415,7 +423,7 @@ void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio)
 		return;
 
 	if (bpf_cache_ext_list_add_tail(lhd_list, folio)) {
-		bpf_printk("cache_ext: Failed to add folio to lhd_list\n");
+		bpf_printk("cache_ext: added: Failed to add folio to lhd_list\n");
 		return;
 	}
 
@@ -429,19 +437,21 @@ void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio)
 
 	if (bpf_map_update_elem(&folio_metadata_map, &key, &new_meta, BPF_ANY)) {
 		bpf_cache_ext_list_del(folio);
-		bpf_printk("cache_ext: Failed to create folio metadata\n");
+		bpf_printk("cache_ext: added: Failed to create folio metadata\n");
 		return;
 	}
 
 	// Track likely eviction candidates
 	u64 hit_density = get_hit_density(&new_meta);
 	if (hit_density == -1) {
-		bpf_printk("cache_ext: Failed to get hit density\n");
+		bpf_printk("cache_ext: added: Failed to get hit density\n");
 		return;
 	}
 
+	/*
 	if (hit_density < ewma_victim_hit_density)
 		recently_admitted[recently_admitted_head++ % RECENTLY_ADMITTED_SIZE] = (u64)folio;
+	*/
 
 	__sync_fetch_and_add(&timestamp, 1);
 
@@ -453,7 +463,7 @@ void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio)
 
 		// Submit reconfigure event to ring buffer
 		if (bpf_ringbuf_output(&events, &num_reconfigurations, sizeof(num_reconfigurations), 0))
-			bpf_printk("cache_ext: Failed to submit reconfigure event\n");
+			bpf_printk("cache_ext: added: Failed to submit reconfigure event\n");
 	}
 }
 
