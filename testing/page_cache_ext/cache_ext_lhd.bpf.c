@@ -9,7 +9,7 @@
 
 char _license[] SEC("license") = "GPL";
 
-static u64 next_reconfiguration = 0;
+static u64 next_reconfiguration = REQS_PER_RECONFIG;
 static u32 num_reconfigurations = 0;
 
 static u64 age_coarsening_shift = INITIAL_AGE_COARSENING_SHIFT;
