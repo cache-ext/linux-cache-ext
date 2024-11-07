@@ -254,8 +254,7 @@ int reconfigure(void) {
 	return 0;
 }
 
-s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg)
-{
+s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg) {
 	int i;
 
 	lhd_list = bpf_cache_ext_ds_registry_new_list(memcg);
@@ -344,8 +343,7 @@ void BPF_STRUCT_OPS(lhd_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	}*/
 }
 
-void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio)
-{
+void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio) {
 	if (!is_folio_relevant(folio))
 		return;
 
@@ -384,8 +382,7 @@ void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio)
 	}
 }
 
-void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio)
-{
+void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio) {
 	u64 key = (u64)folio;
 	u64 age, hit_density, *evictions;
 	struct lhd_class *cls;
@@ -417,8 +414,7 @@ void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio)
 		bpf_printk("cache_ext: evicted: Failed to delete metadata\n");
 }
 
-void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio)
-{
+void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio) {
 	if (!is_folio_relevant(folio))
 		return;
 
