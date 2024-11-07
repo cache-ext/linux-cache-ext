@@ -2,7 +2,6 @@
  * BPF-Exposed data structures for page_cache_ext.
  */
 
-#include "linux/types.h"
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
@@ -154,9 +153,8 @@ int cache_ext_list_del(struct folio *folio)
 		spin_unlock(bucket_lock);
 		return -1;
 	}
-	// TODO: When deleting, don't poison the pointers.
-	list_del(&valid_folio->cache_ext_node->node);
-	INIT_LIST_HEAD(&valid_folio->cache_ext_node->node);
+
+	list_del_init(&valid_folio->cache_ext_node->node);
 
 	cache_ext_ds_registry_write_unlock(folio);
 	spin_unlock(bucket_lock);
