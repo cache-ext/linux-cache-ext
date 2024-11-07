@@ -30,6 +30,8 @@ static u64 lhd_list;
 
 static u64 num_objects = 0;
 
+#define INT64_MAX  (9223372036854775807LL)
+
 // We omit size, assume all folios are same size for now
 struct folio_metadata {
 	u64 last_access_time;
@@ -282,15 +284,15 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg) {
 
 static s64 bpf_lhd_score_fn(struct cache_ext_list_node *a) {
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio))
-		return -1;
+		return INT64_MAX;
 
 	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio))
-		return -1;
+		return INT64_MAX;
 
 	struct folio_metadata *data = get_folio_metadata(a->folio);
 	if (!data) {
 		bpf_printk("cache_ext: score_fn: Failed to get metadata\n");
-		return -1;
+		return INT64_MAX;
 	}
 
 	return get_hit_density(data);
