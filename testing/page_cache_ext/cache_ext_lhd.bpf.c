@@ -443,11 +443,11 @@ void BPF_STRUCT_OPS(lhd_folio_added, struct folio *folio) {
 	}
 
 	// Track likely eviction candidates
-	u64 hit_density = get_hit_density(&new_meta);
-	if (hit_density == -1) {
-		bpf_printk("cache_ext: added: Failed to get hit density\n");
-		return;
-	}
+	// u64 hit_density = get_hit_density(&new_meta);
+	// if (hit_density == -1) {
+	// 	bpf_printk("cache_ext: added: Failed to get hit density\n");
+	// 	return;
+	// }
 
 	/*
 	if (hit_density < ewma_victim_hit_density)
