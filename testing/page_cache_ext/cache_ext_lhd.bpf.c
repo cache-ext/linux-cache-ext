@@ -347,8 +347,7 @@ void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio) {
 	if (!is_folio_relevant(folio))
 		return;
 
-	u64 key = (u64)folio;
-	struct folio_metadata *data = bpf_map_lookup_elem(&folio_metadata_map, &key);
+	struct folio_metadata *data = get_folio_metadata(folio);
 	if (!data) {
 		bpf_printk("cache_ext: accessed: Failed to get metadata\n");
 		return;
