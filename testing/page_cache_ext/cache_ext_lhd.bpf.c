@@ -146,6 +146,50 @@ static inline void update_class(struct lhd_class *class) {
 	}
 }
 
+// TODO: verify these values are scaled accurately
+static inline void stretch_distribution(s32 delta) {
+	int i;
+	bpf_for(i, 0, NUM_CLASSES) {
+		struct lhd_class *cls = &classes[i];
+		int init_age = MAX_AGE >> (-delta);
+		u32 j;
+
+		bpf_for(j, init_age, MAX_AGE - 1) {
+			cls->hits[MAX_AGE - 1] += cls->hits[j];
+			cls->evictions[MAX_AGE - 1] = cls->evictions[j];
+		}
+		bpf_for(j, 2, MAX_AGE + 1) { // MAX_AGE -2 -> 0
+			u32 index = MAX_AGE - j;
+			cls->hits[index & MAX_AGE_MASK] = cls->hits[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
+			cls->evictions[index & MAX_AGE_MASK] = cls->evictions[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
+		}
+	}
+}
+
+// TODO: verify these values are scaled accurately
+static inline void compress_distribution(s32 delta) {
+	int i;
+	bpf_for(i, 0, NUM_CLASSES) {
+		struct lhd_class *cls = &classes[i];
+		u32 j;
+
+		bpf_for(j, 0, MAX_AGE >> delta) {
+			cls->hits[j & MAX_AGE_MASK] = cls->hits[(j << delta) & MAX_AGE_MASK];
+			cls->evictions[j & MAX_AGE_MASK] = cls->evictions[(j << delta) & MAX_AGE_MASK];
+			int k;
+			bpf_for(k, 1, (1 << delta)) {
+				cls->hits[j & MAX_AGE_MASK] += cls->hits[((j << delta) + k) & MAX_AGE_MASK];
+				cls->evictions[j & MAX_AGE_MASK] += cls->evictions[((j << delta) + k) & MAX_AGE_MASK];
+			}
+		}
+
+		bpf_for(j, MAX_AGE >> delta, MAX_AGE - 1) {
+			cls->hits[j & MAX_AGE_MASK] = 0;
+			cls->evictions[j & MAX_AGE_MASK] = 0;
+		}
+	}
+}
+
 static inline void adapt_age_coarsening(void) {
 	ewma_num_objects = ewma_decay(ewma_num_objects);
 	ewma_num_objects = ewma_decay(ewma_num_objects_mass);
@@ -160,56 +204,19 @@ static inline void adapt_age_coarsening(void) {
 	if (num_reconfigurations == 5 || num_reconfigurations == 25) {
 		u32 optimal_age_coarsening_log2 = 1;
 
-		while ((1 << optimal_age_coarsening_log2) < optimal_age_coarsening) {
+		while ((1 << optimal_age_coarsening_log2) < optimal_age_coarsening)
 			optimal_age_coarsening_log2++;
-		}
 
 		s32 delta = optimal_age_coarsening_log2 - age_coarsening_shift;
 		age_coarsening_shift = optimal_age_coarsening_log2;
 
 		ewma_num_objects *= 8;
 		ewma_num_objects_mass *= 8;
-		
-		// TODO: verify these values are scaled accurately
-		if (delta < 0) {  // Stretch
-			int i;
-			bpf_for(i, 0, NUM_CLASSES) {
-				struct lhd_class *cls = &classes[i];
-				int init_age = MAX_AGE >> (-delta);
-				u32 j;
 
-				bpf_for(j, init_age, MAX_AGE - 1) {
-					cls->hits[MAX_AGE - 1] += cls->hits[j];
-					cls->evictions[MAX_AGE - 1] = cls->evictions[j];
-				}
-				bpf_for(j, 2, MAX_AGE + 1) { // MAX_AGE -2 -> 0
-					u32 index = MAX_AGE - j;
-					cls->hits[index & MAX_AGE_MASK] = cls->hits[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
-					cls->evictions[index & MAX_AGE_MASK] = cls->evictions[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
-				}
-			}
-		} else if (delta > 0) {  // Compress
-			int i;
-			bpf_for(i, 0, NUM_CLASSES) {
-				struct lhd_class *cls = &classes[i];
-				u32 j;
-
-				bpf_for(j, 0, MAX_AGE >> delta) {
-					cls->hits[j & MAX_AGE_MASK] = cls->hits[(j << delta) & MAX_AGE_MASK];
-					cls->evictions[j & MAX_AGE_MASK] = cls->evictions[(j << delta) & MAX_AGE_MASK];
-					int k;
-					bpf_for(k, 1, (1 << delta)) {
-						cls->hits[j & MAX_AGE_MASK] += cls->hits[((j << delta) + k) & MAX_AGE_MASK];
-						cls->evictions[j & MAX_AGE_MASK] += cls->evictions[((j << delta) + k) & MAX_AGE_MASK];
-					}
-				}
-
-				bpf_for(j, MAX_AGE >> delta, MAX_AGE - 1) {
-					cls->hits[j & MAX_AGE_MASK] = 0;
-					cls->evictions[j & MAX_AGE_MASK] = 0;
-				}
-			}
-		}
+		if (delta < 0)
+			stretch_distribution(delta);
+		else if (delta > 0)
+			compress_distribution(delta);
 	}
 }
 
@@ -230,11 +237,10 @@ static inline void model_hit_density(void) {
 			total_events += cls->evictions[index & MAX_AGE_MASK];
 			lifetime_unconditoned += total_events;
 
-			if (total_events > TOTAL_EVENTS_THRESH) {
+			if (total_events > TOTAL_EVENTS_THRESH)
 				cls->hit_densities[index & MAX_AGE_MASK] = total_hits / lifetime_unconditoned;
-			} else {
+			else
 				cls->hit_densities[index & MAX_AGE_MASK] = 0;
-			}
 		}
 	}
 }
