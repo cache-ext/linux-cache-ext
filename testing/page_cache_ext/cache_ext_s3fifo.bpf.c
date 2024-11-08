@@ -169,7 +169,7 @@ static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct
 	};
 
 	if (bpf_cache_ext_list_iterate_extended(memcg, small_list, bpf_s3fifo_score_small_fn, &opts,
-						eviction_ctx)) {
+						eviction_ctx) < 0) {
 		bpf_printk("cache_ext: evict: Failed to iterate small_list\n");
 		return;
 	}
@@ -206,7 +206,7 @@ void BPF_STRUCT_OPS(s3fifo_folio_evicted, struct folio *folio) {
 	u8 ghost_val = 0;
 	
 	if (bpf_cache_ext_list_del(folio)) {
-		bpf_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
+		bpf_printk("cache_ext: Failed to delete folio from sampling_list\n");
 		return;
 	}
 
