@@ -92,7 +92,7 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(s3fifo_init, struct mem_cgroup *memcg)
 	return 0;
 }
 
-static s64 bpf_s3fifo_score_fn(struct cache_ext_list_node *a) {
+static s64 bpf_s3fifo_score_main_fn(struct cache_ext_list_node *a) {
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio))
 		return INT64_MAX;
 
@@ -112,8 +112,29 @@ static s64 bpf_s3fifo_score_fn(struct cache_ext_list_node *a) {
 	return freq;
 }
 
-static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx,
-		       struct mem_cgroup *memcg)
+static int bpf_s3fifo_score_small_fn(int idx, struct cache_ext_list_node *a)
+{
+	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio))
+		return CACHE_EXT_CONTINUE_ITER;
+
+	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio))
+		return CACHE_EXT_CONTINUE_ITER;
+
+	struct folio_metadata *data = get_folio_metadata(a->folio);
+	if (!data) {
+		bpf_printk("cache_ext: score_fn: Failed to get metadata\n");
+		return CACHE_EXT_CONTINUE_ITER;
+	}
+
+	// Move to main list if freq > 1
+	if (data->freq > 1)
+		return CACHE_EXT_CONTINUE_ITER;
+
+	// Else, evict
+	return CACHE_EXT_EVICT_NODE;
+}
+
+static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx, struct mem_cgroup *memcg)
 {
 	/*
 	 * Iterate from head. If freq > 0, move to tail, freq--.
@@ -124,14 +145,14 @@ static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx,
 		.sample_size = 32,
 	};
 
-	if (bpf_cache_ext_list_sample(memcg, main_list, bpf_s3fifo_score_fn, &opts, eviction_ctx)) {
+	if (bpf_cache_ext_list_sample(memcg, main_list, bpf_s3fifo_score_main_fn, &opts,
+				      eviction_ctx)) {
 		bpf_printk("cache_ext: evict: Failed to sample main_list\n");
 		return;
 	}
 }
 
-static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx,
-			struct mem_cgroup *memcg)
+static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct mem_cgroup *memcg)
 {
 	/*
 	 * Iterate from head. If freq > 1, move to main list, otherwise evict.
@@ -139,6 +160,21 @@ static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx,
 	 * 
 	 * Use the iterate interface.
 	 */
+
+	struct cache_ext_iterate_opts opts = {
+		.continue_list = main_list,
+		.continue_mode = CACHE_EXT_ITERATE_TAIL,
+		.evict_list = CACHE_EXT_ITERATE_SELF,
+		.evict_mode = CACHE_EXT_ITERATE_TAIL,
+	};
+
+	if (bpf_cache_ext_list_iterate_extended(memcg, small_list, bpf_s3fifo_score_small_fn, &opts,
+						eviction_ctx)) {
+		bpf_printk("cache_ext: evict: Failed to iterate small_list\n");
+		return;
+	}
+
+	__sync_fetch_and_sub(&small_list_size, opts.nr_folios_continue + opts.nr_folios_evict);
 }
 
 void BPF_STRUCT_OPS(s3fifo_evict_folios, struct page_cache_ext_eviction_ctx *eviction_ctx,
@@ -200,7 +236,13 @@ void BPF_STRUCT_OPS(s3fifo_folio_added, struct folio *folio) {
 		.freq = 0,
 	};
 
-	u64 list_to_add = folio_in_ghost(folio) ? main_list : small_list;
+	u64 list_to_add;
+	if (folio_in_ghost(folio)) {
+		list_to_add = main_list;
+	} else {
+		list_to_add = small_list;
+		__sync_fetch_and_add(&small_list_size, 1);
+	}
 
 	if (bpf_cache_ext_list_add_tail(list_to_add, folio)) {
 		// TODO: add back to ghost_map?
