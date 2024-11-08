@@ -239,6 +239,10 @@ struct cache_ext_iterate_opts {
 	// Options for CACHE_EXT_EVICT_NODE nodes
 	u64 evict_list;
 	u64 evict_mode;
+
+	// Output
+	u64 nr_folios_continue;
+	u64 nr_folios_evict;
 };
 
 static bool cache_ext_validate_iterate_opts(struct cache_ext_iterate_opts *opts)
@@ -311,6 +315,8 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 			else if (opts->continue_mode == CACHE_EXT_ITERATE_TAIL)
 				list_move_tail(&node->node, &continue_list->head);
 
+			opts->nr_folios_continue++;
+
 			continue;
 		} else if (cb_ret == CACHE_EXT_STOP_ITER) {
 			ret = CACHE_EXT_DONE_ITER;
@@ -323,6 +329,8 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 				list_move(&node->node, &evict_list->head);
 			else if (opts->evict_mode == CACHE_EXT_ITERATE_TAIL)
 				list_move_tail(&node->node, &evict_list->head);
+
+			opts->nr_folios_evict++;
 
 			if (ctx->nr_folios_to_evict == ARRAY_SIZE(ctx->folios_to_evict)) {
 				ret = CACHE_EXT_EVICT_ARRAY_FILLED;
@@ -394,6 +402,23 @@ __bpf_kfunc int bpf_cache_ext_list_iterate(
 	int(iter_fn)(int idx, struct cache_ext_list_node *node),
 	struct page_cache_ext_eviction_ctx *ctx)
 {
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
+	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(registry, list);
+	if (!list_ptr)
+		return -1;
+
+	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
+};
+
+__bpf_kfunc int bpf_cache_ext_list_iterate_extended(
+	struct mem_cgroup *memcg, u64 list,
+	int(iter_fn)(int idx, struct cache_ext_list_node *node),
+	struct cache_ext_iterate_opts *opts,
+	struct page_cache_ext_eviction_ctx *ctx)
+{
+	if (!opts)
+		return -1;
+
 	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
 	struct cache_ext_list *list_ptr = cache_ext_ds_registry_get(registry, list);
 	if (!list_ptr)
@@ -501,6 +526,7 @@ enum cache_ext_list_ops_type {
 	KF_bpf_cache_ext_list_iterate,
 	KF_bpf_cache_ext_list_sample,
 	KF_bpf_cache_ext_list_move,
+	KF_bpf_cache_ext_list_iterate_extended,
 };
 
 BTF_SET8_START(cache_ext_list_ops)
@@ -510,6 +536,7 @@ BTF_ID_FLAGS(func, bpf_cache_ext_list_del)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_sample)
 BTF_ID_FLAGS(func, bpf_cache_ext_list_move)
+BTF_ID_FLAGS(func, bpf_cache_ext_list_iterate_extended)
 BTF_SET8_END(cache_ext_list_ops)
 
 BTF_ID_LIST(cache_ext_list_ops_list)
@@ -519,10 +546,12 @@ BTF_ID(func, bpf_cache_ext_list_del)
 BTF_ID(func, bpf_cache_ext_list_iterate)
 BTF_ID(func, bpf_cache_ext_list_sample)
 BTF_ID(func, bpf_cache_ext_list_move)
+BTF_ID(func, bpf_cache_ext_list_iterate_extended)
 
 noinline bool cache_ext_is_callback_calling_kfunc_iterate(u32 btf_id)
 {
-	return (btf_id == cache_ext_list_ops_list[KF_bpf_cache_ext_list_iterate]);
+	return (btf_id == cache_ext_list_ops_list[KF_bpf_cache_ext_list_iterate] ||
+		btf_id == cache_ext_list_ops_list[KF_bpf_cache_ext_list_iterate_extended]);
 }
 
 noinline bool cache_ext_is_callback_calling_kfunc_sample(u32 btf_id)
