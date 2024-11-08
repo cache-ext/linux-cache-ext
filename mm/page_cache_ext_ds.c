@@ -295,7 +295,10 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 		evict_list = list;
 	}
 
-	read_lock(&registry->lock);
+	if (opts->continue_mode == CACHE_EXT_CONTINUE_ITER && opts->evict_mode == CACHE_EXT_CONTINUE_ITER)
+		read_lock(&registry->lock);
+	else
+		write_lock(&registry->lock);
 
 	list_for_each_entry_safe(node, node2, &list->head, node) {
 		if (iter > max_iter) {
@@ -341,7 +344,11 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 		}
 	}
 
-	read_unlock(&registry->lock);
+	if (opts->continue_mode == CACHE_EXT_CONTINUE_ITER && opts->evict_mode == CACHE_EXT_CONTINUE_ITER)
+		read_unlock(&registry->lock);
+	else
+		write_unlock(&registry->lock);
+
 	return ret;
 }
 
