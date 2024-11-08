@@ -182,8 +182,7 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 	struct cache_ext_list_node *node;
 	bpf_callback_t bpf_iter_fn = (bpf_callback_t)iter_fn;
 
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_memcg(memcg);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
 	read_lock(&registry->lock);
 
 	list_for_each_entry(node, &list->head, node) {
@@ -424,7 +423,7 @@ __bpf_kfunc int bpf_cache_ext_list_iterate_extended(
 	if (!list_ptr)
 		return -1;
 
-	return cache_ext_list_iterate(memcg, list_ptr, (void *)iter_fn, ctx);
+	return cache_ext_list_iterate_extended(memcg, list_ptr, (void *)iter_fn, opts, ctx);
 };
 
 __bpf_kfunc int
