@@ -102,7 +102,7 @@ void BPF_STRUCT_OPS(mru_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	int ret = bpf_cache_ext_list_iterate(memcg, mru_list, iterate_mru,
 					     eviction_ctx);
 	// Check that the right amount of folios were evicted
-	if (ret != 0) {
+	if (ret < 0) {
 		bpf_printk("page_cache_ext: Failed to evict folios\n");
 	}
 	if (eviction_ctx->request_nr_folios_to_evict > eviction_ctx->nr_folios_to_evict) {
