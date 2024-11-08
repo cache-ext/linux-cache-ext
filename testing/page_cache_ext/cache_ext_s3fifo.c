@@ -24,8 +24,6 @@ static struct argp_option options[] = {
 	{ 0 },
 };
 
-static long num_reconfigurations;
-
 static const uint64_t page_size = 4096;
 
 static volatile sig_atomic_t exiting;
@@ -119,8 +117,7 @@ int main(int argc, char **argv) {
 	// Install signal handler
 	if (sigaction(SIGINT, &sa, NULL)) {
 		perror("Failed to set up signal handling");
-		ret = 1;
-		goto cleanup;
+		return 1;
 	}
 
 	if (validate_watch_dir(args.watch_dir, watch_dir_path))
@@ -161,5 +158,5 @@ int main(int argc, char **argv) {
 cleanup:
 	bpf_link__destroy(link);
 	cache_ext_s3fifo_bpf__destroy(skel);
-	return 0;
+	return ret;
 }
