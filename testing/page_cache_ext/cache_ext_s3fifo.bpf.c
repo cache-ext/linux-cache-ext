@@ -9,10 +9,9 @@
 char _license[] SEC("license") = "GPL";
 
 #define ENOENT		2  /* include/uapi/asm-generic/errno-base.h */
-#define PAGE_SIZE	4096
 #define INT64_MAX	(9223372036854775807LL)
 
-// Set from userspace
+// Set from userspace. In terms of number of pages.
 const volatile size_t cache_size;
 
 struct folio_metadata {
@@ -143,13 +142,12 @@ static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx,
 }
 
 void BPF_STRUCT_OPS(s3fifo_evict_folios, struct page_cache_ext_eviction_ctx *eviction_ctx,
-	       struct mem_cgroup *memcg)
+		    struct mem_cgroup *memcg)
 {
-	if (small_list_size >= cache_size / (PAGE_SIZE * 10)) {
+	if (small_list_size >= cache_size / 10)
 		evict_small(eviction_ctx, memcg);
-	} else {
+	else
 		evict_main(eviction_ctx, memcg);
-	}
 }
 
 void BPF_STRUCT_OPS(s3fifo_folio_accessed, struct folio *folio) {

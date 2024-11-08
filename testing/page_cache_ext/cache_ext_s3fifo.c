@@ -2,7 +2,9 @@
 #include <bpf/bpf.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -10,7 +12,7 @@
 #include "dir_watcher.h"
 #include "cache_ext_s3fifo.skel.h"
 
-char *USAGE = "Usage: ./cache_ext_lhd\n";
+char *USAGE = "Usage: ./cache_ext_s3fifo [OPTION]...\n";
 struct cmdline_args {
 	char *watch_dir;
         uint64_t cgroup_size;
@@ -23,6 +25,8 @@ static struct argp_option options[] = {
 };
 
 static long num_reconfigurations;
+
+static const uint64_t page_size = 4096;
 
 static volatile sig_atomic_t exiting;
 
@@ -127,6 +131,9 @@ int main(int argc, char **argv) {
 		perror("Failed to open BPF skeleton");
 		return 1;
 	}
+
+	// Set cache size in terms of number of pages. Assumes uniform page size.
+	skel->rodata->cache_size = args.cgroup_size / page_size;
 
 	if (cache_ext_s3fifo_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
