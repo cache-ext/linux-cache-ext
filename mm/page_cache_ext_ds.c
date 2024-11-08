@@ -133,15 +133,15 @@ int cache_ext_list_move(struct cache_ext_list *list, struct folio *folio,
 
 int cache_ext_list_del(struct folio *folio)
 {
-	struct valid_folios_set *valid_folios_set =
-		folio_to_valid_folios_set(folio);
-	spinlock_t *bucket_lock =
-		valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+
 	spin_lock(bucket_lock);
+
 	struct valid_folio *valid_folio = valid_folios_lookup(folio);
 	if (!valid_folio) {
 		spin_unlock(bucket_lock);
-		return -1;
+		return -ENOENT;
 	}
 
 	// Get the global list lock
