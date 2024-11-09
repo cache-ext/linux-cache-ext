@@ -12,7 +12,9 @@ char _license[] SEC("license") = "GPL";
 #define INT64_MAX	(9223372036854775807LL)
 
 // Set from userspace. In terms of number of pages.
-const volatile size_t cache_size;
+// TODO: change
+#define CACHE_SIZE (((1ull << 30) * 2) / 4096)
+const volatile size_t cache_size = CACHE_SIZE;
 
 struct folio_metadata {
 	s64 freq;
@@ -34,7 +36,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct ghost_entry);
 	__type(value, u8);
-	__uint(max_entries, 393216);  // (2GiB / 4KiB) * 0.75, adjust as necessary (TODO)
+	__uint(max_entries, CACHE_SIZE); // TODO: change
 	__uint(map_flags, BPF_F_NO_COMMON_LRU);  // Per-CPU LRU eviction logic
 } ghost_map SEC(".maps");
 

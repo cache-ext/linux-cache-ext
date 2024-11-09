@@ -62,10 +62,10 @@ static int parse_args(int argc, char **argv, struct cmdline_args *args) {
 		return 1;
 	}
 
-        if (args->cgroup_size == 0) {
-                fprintf(stderr, "Invalid cgroup size\n");
-                return 1;
-        }
+	// if (args->cgroup_size == 0) {
+	//         fprintf(stderr, "Invalid cgroup size\n");
+	//         return 1;
+	// }
 
 	return 0;
 }
@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Set cache size in terms of number of pages. Assumes uniform page size.
-	skel->rodata->cache_size = args.cgroup_size / page_size;
+	//skel->rodata->cache_size = args.cgroup_size / page_size;
 
 	if (cache_ext_s3fifo_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
