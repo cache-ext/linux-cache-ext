@@ -86,6 +86,7 @@ class FileSearchBenchmark(BenchmarkFramework):
         self.end_time = time()
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
+        enable_smt()
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = {"runtime_sec": self.end_time - self.start_time}

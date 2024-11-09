@@ -242,6 +242,10 @@ def disable_smt():
     run(["sudo", "sh", "-c", "echo off > /sys/devices/system/cpu/smt/control"])
 
 
+def enable_smt():
+    run(["sudo", "sh", "-c", "echo on > /sys/devices/system/cpu/smt/control"])
+
+
 def rsync_folder(source_dir: str, dest_dir: str):
     # rsync -avpl --delete /mydata/leveldb_db_orig/ /mydata/leveldb_db/
     if not source_dir.endswith("/"):
