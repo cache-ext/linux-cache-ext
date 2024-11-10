@@ -48,7 +48,7 @@ class FileSearchBenchmark(BenchmarkFramework):
             "cgroup_size", [1 * GiB], configs
         )
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
         )
         configs = add_config_option("benchmark", ["filesearch"], configs)
         configs = add_config_option("iteration", list(range(1, 2)), configs)
