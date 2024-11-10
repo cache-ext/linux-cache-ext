@@ -1,9 +1,6 @@
 import os
-import re
 import sys
 import json
-import uuid
-import psutil
 import select
 import logging
 import resource
@@ -16,7 +13,7 @@ from contextlib import suppress
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from subprocess import CalledProcessError
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Union
 
 
 GiB = 2**30
@@ -44,6 +41,10 @@ class CacheExtPolicy:
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         sleep(10)
+
+        # For some reason, running a command with `sudo` messes up the terminal.
+        # This is a workaround to fix it.
+        run(["stty", "sane"])
         if self._policy_thread.poll() is not None:
             raise Exception(
                 "Policy thread exited unexpectedly: %s"
@@ -487,7 +488,6 @@ class BenchmarkFramework(ABC):
             # Limit CPUs
             cmd = ["taskset", "-c", "0-%s" % str(config["cpus"]-1)] + cmd
 
-            log.info("Running command: %s" % cmd)
             env = os.environ
             if self.args.debug_segfault:
                 env["SEGFAULT_SIGNALS"] = "abrt segv"
@@ -497,6 +497,7 @@ class BenchmarkFramework(ABC):
                 log.info("Adding extra envs: %s" % extra_envs)
             env.update(extra_envs)
             self.before_benchmark(config)
+            log.info("Running command: %s" % cmd)
             try:
                 stdout = run_command_with_live_output(cmd, env=env)
                 # stdout = check_output(cmd, encoding="utf-8", env=env)
