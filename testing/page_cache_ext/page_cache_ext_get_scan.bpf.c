@@ -23,6 +23,25 @@ enum ListType {
     NUM_LISTS,
 };
 
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, int);
+    __type(value, bool);
+    __uint(max_entries, 100);
+} scan_pids SEC(".maps");
+
+static inline bool is_scanning_pid() {
+	// Get thread id
+	__u64 pid = bpf_get_current_pid_tgid();
+	pid = pid & 0xFFFFFFFF;
+	// Check if pid is in scan_pids map
+	u8 *ret = bpf_map_lookup_elem(&scan_pids, &pid);
+	if (ret != NULL) {
+		return true;
+	}
+	return false;
+}
+
 /*
  * Maps
  */
