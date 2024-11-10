@@ -168,6 +168,11 @@ class IOTraceBenchmark(BenchmarkFramework):
         drop_page_cache()
         disable_swap()
         disable_smt()
+
+        # To ensure that writeback keeps up with the benchmark
+        set_sysctl("vm.dirty_background_ratio", 10)
+        set_sysctl("vm.dirty_ratio", 30)
+
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             recreate_cache_ext_cgroup(limit_in_bytes=config["cgroup_size"])
             self.cache_ext_policy.start()
@@ -207,6 +212,10 @@ class IOTraceBenchmark(BenchmarkFramework):
         drop_page_cache()
         sleep(2)
         enable_smt()
+        
+        # Reset to default
+        set_sysctl("vm.dirty_background_ratio", 10)
+        set_sysctl("vm.dirty_ratio", 20)
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = parse_io_trace_bench_results(stdout)
@@ -216,9 +225,7 @@ class IOTraceBenchmark(BenchmarkFramework):
 def main():
     global log
     ulimit(1000000)
-    # To ensure that writeback keeps up with the benchmark
-    set_sysctl("vm.dirty_background_ratio", 5)
-    set_sysctl("vm.dirty_ratio", 30)
+
     io_trace_bench = IOTraceBenchmark()
     # Check that trace data dir exists
     if not os.path.exists(io_trace_bench.args.trace_data_dir):
