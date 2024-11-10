@@ -1,9 +1,5 @@
 import os
 import re
-import sys
-import json
-import uuid
-import select
 import logging
 import argparse
 import subprocess
@@ -11,8 +7,6 @@ import subprocess
 from time import sleep
 from bench_lib import *
 from typing import Dict, List
-from ruamel.yaml import YAML
-from contextlib import suppress, contextmanager
 
 
 log = logging.getLogger(__name__)
