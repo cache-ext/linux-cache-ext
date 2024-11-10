@@ -1,9 +1,5 @@
 import os
 import re
-import sys
-import json
-import uuid
-import select
 import logging
 import argparse
 import subprocess

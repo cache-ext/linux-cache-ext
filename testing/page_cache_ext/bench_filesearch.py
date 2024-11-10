@@ -1,5 +1,4 @@
 import os
-import sys
 import logging
 
 from bench_lib import *
