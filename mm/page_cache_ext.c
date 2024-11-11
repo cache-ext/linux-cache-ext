@@ -1,14 +1,12 @@
-#include <linux/types.h>
-#include <linux/mm_types.h>
-#include <linux/kernel.h>
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
 #include <linux/btf.h>
+#include <linux/kernel.h>
 #include <linux/memcontrol.h>
+#include <linux/mm_types.h>
+#include <linux/types.h>
 
-// extern struct bpf_struct_ops bpf_page_cache_ext_ops;
 static const struct btf_type *page_cache_ext_eviction_ctx_type;
-struct page_cache_ext_ops *page_cache_ext_ops = NULL;
 
 static int bpf_page_cache_ext_init(struct btf *btf)
 {
@@ -111,7 +109,6 @@ static void bpf_page_cache_ext_unreg(void *kdata, void *more_data)
 	struct mem_cgroup *memcg;
 
 	pr_info("page_cache_ext: Unregistering struct ops\n");
-	WRITE_ONCE(page_cache_ext_ops, NULL);
 
 	// Delete the registry and all data structures from the memory cgroup.
 	if (!cgrp) {
