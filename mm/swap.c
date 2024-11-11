@@ -39,7 +39,6 @@
 #include <linux/buffer_head.h>
 
 #include "internal.h"
-#include "page_cache_ext.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagemap.h>
