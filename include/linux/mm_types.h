@@ -1382,6 +1382,7 @@ struct page_cache_ext_eviction_ctx {
 	// Output
 	unsigned long nr_folios_to_evict;
 	struct folio *folios_to_evict[32];
+	s64 scores[32];
 };
 
 // TODO: How can I make only some fields page_cache_ext_eviction_ctx writeable?

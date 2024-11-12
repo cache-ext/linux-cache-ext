@@ -21,25 +21,21 @@
 
 // cache_ext BPF API
 
-#define CACHE_EXT_CONTINUE_ITER 0
-#define CACHE_EXT_STOP_ITER 1
-#define CACHE_EXT_EVICT_NODE 2
-#define CACHE_EXT_MAX_ITER_REACHED 8
-#define CACHE_EXT_EVICT_ARRAY_FILLED 9
-
 int bpf_cache_ext_list_add(u64 list, struct folio *folio) __ksym;
 int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio) __ksym;
 int bpf_cache_ext_list_del(struct folio *folio) __ksym;
-int bpf_cache_ext_list_move_to_head(u64 list, struct folio *folio) __ksym;
-int bpf_cache_ext_list_move_to_tail(u64 list, struct folio *folio) __ksym;
+int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail) __ksym;
 int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
-			       int(iter_fn)(int idx,
-					    struct cache_ext_list_node *node),
+			       int(iter_fn)(int idx, struct cache_ext_list_node *node),
 			       struct page_cache_ext_eviction_ctx *ctx) __ksym;
+int bpf_cache_ext_list_iterate_extended(struct mem_cgroup *memcg, u64 list,
+					int(iter_fn)(int idx, struct cache_ext_list_node *node),
+					struct cache_ext_iterate_opts *opts,
+					struct page_cache_ext_eviction_ctx *ctx) __ksym;
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      s64(score_fn)(struct cache_ext_list_node *a),
-				  struct sampling_options *opts,
-				  struct page_cache_ext_eviction_ctx *ctx) __ksym;
+			      struct sampling_options *opts,
+			      struct page_cache_ext_eviction_ctx *ctx) __ksym;
 u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg) __ksym;
 
 #define BITS_PER_LONG 64
@@ -172,30 +168,6 @@ static inline u32 bpf_get_random_biased(u32 max) {
 		return 0;
 	}
 	return bpf_get_prandom_u32() % max;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////
-// Scan PIDs map //////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, int);
-    __type(value, bool);
-    __uint(max_entries, 100);
-} scan_pids SEC(".maps");
-
-static inline bool is_scanning_pid() {
-	// Get thread id
-	__u64 pid = bpf_get_current_pid_tgid();
-	pid = pid & 0xFFFFFFFF;
-	// Check if pid is in scan_pids map
-	u8 *ret = bpf_map_lookup_elem(&scan_pids, &pid);
-	if (ret != NULL) {
-		return true;
-	}
-	return false;
 }
 
 #endif /* _CACHE_EXT_LIB_BPF_H */

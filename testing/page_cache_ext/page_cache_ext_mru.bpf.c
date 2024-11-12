@@ -34,41 +34,17 @@ inline bool is_folio_relevant(struct folio *folio)
 	return res;
 }
 
-/*
- * Maps
- */
+__u64 mru_list;
 
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, int);
-	__type(value, u64);
-	__uint(max_entries, 1);
-} mru_list_map SEC(".maps");
-
-inline u64 get_mru_list()
-{
-	int zero = 0;
-	u64 *mru_list;
-	mru_list = bpf_map_lookup_elem(&mru_list_map, &zero);
-	if (!mru_list) {
-		return 0;
-	}
-	return *mru_list;
-}
-
-// SEC("struct_ops.s/mru_init")
-// s32 mru_init(struct mem_cgroup *memcg)
 s32 BPF_STRUCT_OPS_SLEEPABLE(mru_init, struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_init hook! :D\n");
-	int zero = 0;
-	u64 mru_list = bpf_cache_ext_ds_registry_new_list(memcg);
+	mru_list = bpf_cache_ext_ds_registry_new_list(memcg);
 	if (mru_list == 0) {
 		bpf_printk("page_cache_ext: Failed to create mru_list\n");
 		return -1;
 	}
 	bpf_printk("page_cache_ext: Created mru_list: %llu\n", mru_list);
-	bpf_map_update_elem(&mru_list_map, &zero, &mru_list, BPF_ANY);
 	return 0;
 }
 
@@ -78,11 +54,7 @@ void BPF_STRUCT_OPS(mru_folio_added, struct folio *folio)
 	if (!is_folio_relevant(folio)) {
 		return;
 	}
-	u64 mru_list = get_mru_list();
-	if (mru_list == 0) {
-		bpf_printk("page_cache_ext: Failed to get mru_list\n");
-		return;
-	}
+
 	int ret = bpf_cache_ext_list_add(mru_list, folio);
 	if (ret != 0) {
 		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
@@ -94,41 +66,24 @@ void BPF_STRUCT_OPS(mru_folio_added, struct folio *folio)
 void BPF_STRUCT_OPS(mru_folio_accessed, struct folio *folio)
 {
 	int ret;
-	u64 mru_list;
 	dbg_printk("page_cache_ext: Hi from the mru_folio_accessed hook! :D\n");
 
 	if (!is_folio_relevant(folio)) {
 		return;
 	}
 
-	ret = bpf_cache_ext_list_del(folio);
+	ret = bpf_cache_ext_list_move(mru_list, folio, false);
 	if (ret != 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to delete folio from mru_list\n");
+		bpf_printk("page_cache_ext: Failed to move folio to mru_list head\n");
 		return;
 	}
-	mru_list = get_mru_list();
-	if (mru_list == 0) {
-		bpf_printk("page_cache_ext: Failed to get mru_list\n");
-		return;
-	}
-	ret = bpf_cache_ext_list_add(mru_list, folio);
-	if (ret != 0) {
-		bpf_printk("page_cache_ext: Failed to add folio to mru_list\n");
-		return;
-	}
+
 	dbg_printk("page_cache_ext: Moved folio to mru_list tail\n");
 }
 
 void BPF_STRUCT_OPS(mru_folio_evicted, struct folio *folio)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_folio_evicted hook! :D\n");
-	u64 mru_list = get_mru_list();
-	if (mru_list == 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to get mru_list on evicted path\n");
-		return;
-	}
 	bpf_cache_ext_list_del(folio);
 }
 
@@ -144,16 +99,10 @@ void BPF_STRUCT_OPS(mru_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	       struct mem_cgroup *memcg)
 {
 	dbg_printk("page_cache_ext: Hi from the mru_evict_folios hook! :D\n");
-	u64 mru_list = get_mru_list();
-	if (mru_list == 0) {
-		bpf_printk(
-			"page_cache_ext: Failed to get mru_list on eviction path\n");
-		return;
-	}
 	int ret = bpf_cache_ext_list_iterate(memcg, mru_list, iterate_mru,
 					     eviction_ctx);
 	// Check that the right amount of folios were evicted
-	if (ret != 0) {
+	if (ret < 0) {
 		bpf_printk("page_cache_ext: Failed to evict folios\n");
 	}
 	if (eviction_ctx->request_nr_folios_to_evict > eviction_ctx->nr_folios_to_evict) {

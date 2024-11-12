@@ -65,3 +65,6 @@ perf.data*
 
 # traces
 *.dat
+
+# vmlinux.h
+vmlinux.h

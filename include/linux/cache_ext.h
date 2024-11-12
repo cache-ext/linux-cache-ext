@@ -55,6 +55,7 @@ struct sampling_options {
 
 int bpf_cache_ext_list_add(u64 list, struct folio *folio);
 int bpf_cache_ext_list_add_tail(u64 list, struct folio *folio);
+int bpf_cache_ext_list_move(u64 list, struct folio *folio, bool tail);
 int bpf_cache_ext_list_del(struct folio *folio);
 int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 			       int(iter_fn)(int idx,

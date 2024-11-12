@@ -1,9 +1,5 @@
 import os
 import re
-import sys
-import json
-import uuid
-import select
 import logging
 import argparse
 import subprocess
@@ -277,6 +273,7 @@ class LevelDBBenchmark(BenchmarkFramework):
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
         sleep(2)
+        enable_smt()
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = parse_leveldb_bench_results(stdout)

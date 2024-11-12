@@ -1,3 +1,6 @@
+#ifndef _DIR_WATCHER_H
+#define _DIR_WATCHER_H
+
 #include <argp.h>
 #include <dirent.h>
 #include <errno.h>
@@ -12,6 +15,8 @@
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+
+#define inode_watchlist_map(skel) ((skel)->maps.inode_watchlist)
 
 int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recursive) {
 	int ret;
@@ -68,3 +73,5 @@ int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recurs
 
 	return 0;
 }
+
+#endif /* _DIR_WATCHER_H */

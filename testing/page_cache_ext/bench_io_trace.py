@@ -1,9 +1,5 @@
 import os
 import re
-import sys
-import json
-import uuid
-import select
 import logging
 import argparse
 import subprocess
@@ -11,8 +7,6 @@ import subprocess
 from time import sleep
 from bench_lib import *
 from typing import Dict, List
-from ruamel.yaml import YAML
-from contextlib import suppress, contextmanager
 
 
 log = logging.getLogger(__name__)
@@ -157,17 +151,22 @@ class IOTraceBenchmark(BenchmarkFramework):
             "cgroup_size", [15 * GiB], configs
         )
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
             # "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
         )
         configs = add_config_option("iteration", list(range(1, 15)), configs)
         return configs
 
     def benchmark_prepare(self, config):
-        rsync_folder(self.args.trace_data_dir, self.args.trace_temp_data_dir)
+        # rsync_folder(self.args.trace_data_dir, self.args.trace_temp_data_dir)
         drop_page_cache()
         disable_swap()
         disable_smt()
+
+        # To ensure that writeback keeps up with the benchmark
+        set_sysctl("vm.dirty_background_ratio", 10)
+        set_sysctl("vm.dirty_ratio", 30)
+
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             recreate_cache_ext_cgroup(limit_in_bytes=config["cgroup_size"])
             self.cache_ext_policy.start()
@@ -202,10 +201,15 @@ class IOTraceBenchmark(BenchmarkFramework):
         return cmd
 
     def after_benchmark(self, config):
-        drop_page_cache()
-        sleep(2)
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
+        drop_page_cache()
+        sleep(2)
+        enable_smt()
+        
+        # Reset to default
+        set_sysctl("vm.dirty_background_ratio", 10)
+        set_sysctl("vm.dirty_ratio", 20)
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = parse_io_trace_bench_results(stdout)
@@ -215,9 +219,7 @@ class IOTraceBenchmark(BenchmarkFramework):
 def main():
     global log
     ulimit(1000000)
-    # To ensure that writeback keeps up with the benchmark
-    set_sysctl("vm.dirty_background_ratio", 5)
-    set_sysctl("vm.dirty_ratio", 30)
+
     io_trace_bench = IOTraceBenchmark()
     # Check that trace data dir exists
     if not os.path.exists(io_trace_bench.args.trace_data_dir):

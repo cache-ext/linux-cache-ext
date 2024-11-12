@@ -2,8 +2,8 @@
 # See: https://stackoverflow.com/questions/76035116/cannot-use-ebpf-kptr-ref-feature
 CLANG ?= clang-14
 BPFTOOL ?= bpftool
-CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g
-USERSPACE_CFLAGS = -O2 -fsanitize=address -g
+CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g -Wall
+USERSPACE_CFLAGS = -O2 -fsanitize=address -g -Wall
 USERSPACE_LINKER_FLAGS = -L/usr/local/lib64 -lbpf
 
 # Define the BPF program source and the output object file
@@ -33,7 +33,9 @@ CLANG_BPF_SYS_INCLUDES ?= $(shell $(CLANG) -v -E - </dev/null 2>&1 \
 	| sed -n '/<...> search starts here:/,/End of search list./{ s| \(/.*\)|-idirafter \1|p }')
 
 
-all: page_cache_ext_mru.out page_cache_ext_simple.out page_cache_ext_sampling.out page_cache_ext_get_scan.out
+all: 	page_cache_ext_mru.out page_cache_ext_simple.out \
+		page_cache_ext_sampling.out page_cache_ext_get_scan.out \
+		cache_ext_lhd.out cache_ext_s3fifo.out cache_ext_fifo.out
 
 $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
