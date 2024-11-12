@@ -158,7 +158,7 @@ class IOTraceBenchmark(BenchmarkFramework):
         return configs
 
     def benchmark_prepare(self, config):
-        rsync_folder(self.args.trace_data_dir, self.args.trace_temp_data_dir)
+        # rsync_folder(self.args.trace_data_dir, self.args.trace_temp_data_dir)
         drop_page_cache()
         disable_swap()
         disable_smt()
