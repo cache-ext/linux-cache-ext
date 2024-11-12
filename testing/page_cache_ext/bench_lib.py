@@ -31,14 +31,18 @@ class CacheExtPolicy:
         self.has_started = False
         self._policy_thread = None
 
-    def start(self, cgroup_size: int=0):
+    def start(self, per_cgroup: bool=False, cgroup: str=None, cgroup_size: int=0):
         if self.has_started:
             raise Exception("Policy already started")
+
         self.has_started = True
+
         cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
 
         if cgroup_size:
             cmd += ["--cgroup_size", str(cgroup_size)]
+        if per_cgroup:
+            cmd += ["--cgroup", self.cgroup_path]
 
         log.info("Starting policy thread: %s", cmd)
         self._policy_thread = subprocess.Popen(
@@ -204,7 +208,7 @@ def delete_cgroup(cgroup):
 
 
 def recreate_cache_ext_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP,
-                              limit_in_bytes=2*GiB):
+                              limit_in_bytes=2*GiB, per_cgroup=False):
     delete_cgroup(cgroup)
     # Create cache_ext cgroup
     run(["sudo", "cgcreate", "-g", f"memory:{cgroup}"])
@@ -214,9 +218,10 @@ def recreate_cache_ext_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP,
          "echo %d > /sys/fs/cgroup/%s/memory.max"
          % (limit_in_bytes, cgroup)])
 
-    # Enable page cache extension for cache_ext cgroup
-    run(["sudo", "sh", "-c",
-         "echo -n '/%s' > /proc/page_cache_ext_enabled_cgroup" % cgroup])
+    if not per_cgroup:
+        # Enable page cache extension for cache_ext cgroup
+        run(["sudo", "sh", "-c",
+            "echo -n '/%s' > /proc/page_cache_ext_enabled_cgroup" % cgroup])
 
 
 def recreate_baseline_cgroup(cgroup=DEFAULT_BASELINE_CGROUP,
@@ -385,12 +390,17 @@ class BenchmarkFramework(ABC):
         else:
             self.args = self.parse_args()
 
+        self.second_command = False
+
     def benchmark_prepare(self, config):
         pass
 
     @abstractmethod
     def benchmark_cmd(self, config):
         raise NotImplementedError
+    
+    def second_benchmark_cmd(self, config):
+        return []
 
     def cmd_extra_envs(self, config):
         return {}
@@ -501,10 +511,22 @@ class BenchmarkFramework(ABC):
                 log.info("Adding extra envs: %s" % extra_envs)
             env.update(extra_envs)
             self.before_benchmark(config)
-            log.info("Running command: %s" % cmd)
             try:
+                if self.second_command:
+                    second_cmd = self.second_benchmark_cmd(config)
+                    log.info("Running second command: %s" % second_cmd)
+                    second_proc = subprocess.Popen(second_cmd, stdout=subprocess.PIPE)
+
+                log.info("Running command: %s" % cmd)
                 stdout = run_command_with_live_output(cmd, env=env)
                 # stdout = check_output(cmd, encoding="utf-8", env=env)
+
+                if self.second_command:
+                    ret_code = second_proc.wait()
+                    if ret_code != 0:
+                        log.error("Second benchmark failed with error code %s" % ret_code)
+                        raise CalledProcessError(ret_code, self.second_benchmark_cmd(config))
+                    second_proc_output = second_proc.stdout.read().decode("utf-8")
             except CalledProcessError as e:
                 log.error("Benchmark failed with error code %s" % e.returncode)
                 log.error("Output was: %s" % e.output)
@@ -513,7 +535,10 @@ class BenchmarkFramework(ABC):
             self.after_benchmark(config)
             # Save results
             log.info("Parsing results...")
-            bench_run_results = self.parse_results(stdout)
+            if self.second_command:
+                bench_run_results = self.parse_results(stdout, second_output=second_proc_output)
+            else:
+                bench_run_results = self.parse_results(stdout)
             bench_run = BenchRun(config, bench_run_results)
             results.append(bench_run)
             checkpoint_results(results_file, results)
