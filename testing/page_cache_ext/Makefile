@@ -33,20 +33,20 @@ CLANG_BPF_SYS_INCLUDES ?= $(shell $(CLANG) -v -E - </dev/null 2>&1 \
 	| sed -n '/<...> search starts here:/,/End of search list./{ s| \(/.*\)|-idirafter \1|p }')
 
 
-all: page_cache_ext_mru.out page_cache_ext_simple.out page_cache_ext_sampling.out page_cache_ext_get_scan.out
+all: page_cache_ext_mru.out page_cache_ext_simple.out page_cache_ext_sampling.out page_cache_ext_sampling_lru.out page_cache_ext_get_scan.out
 
 $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
 
 .SECONDARY:
-%.bpf.o: %.bpf.c $(VMLINUX_H) dir_watcher.bpf.h
+%.bpf.o: %.bpf.c $(VMLINUX_H) dir_watcher.bpf.h cache_ext_lib.bpf.h
 	$(CLANG) $(CFLAGS) $(CLANG_BPF_SYS_INCLUDES) $< -o $@
 
 .SECONDARY:
 %.skel.h: %.bpf.o $(VMLINUX_H)
 	$(BPFTOOL) gen skeleton $< > $@
 
-%.out: %.c %.skel.h
+%.out: %.c %.skel.h dir_watcher.h
 	$(CLANG) $(USERSPACE_CFLAGS) $< -o $@ $(USERSPACE_LINKER_FLAGS)
 
 clean:

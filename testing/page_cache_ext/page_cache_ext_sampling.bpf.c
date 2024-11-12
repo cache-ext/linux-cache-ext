@@ -30,6 +30,7 @@ char _license[] SEC("license") = "GPL";
  */
 
 #define MAX_PAGES (1 << 20)
+#define INT_MAX (1 << 31)
 
 struct folio_metadata {
 	u64 accesses;
@@ -71,7 +72,7 @@ char STAT_EVICTED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "evicted_scan_pages";
 char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 
 /* Counter for list size */
-int APP_TYPE = LEVELDB;
+int APP_TYPE = GENERIC;
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	// bpf_printk("update_stat!\n");
@@ -248,10 +249,10 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	}
 
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) {
-		return -1;
+		return INT_MAX;
 	}
 	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
-		return -1;
+		return INT_MAX;
 	}
 	return score;
 }
@@ -271,7 +272,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 	}
 	// TODO: What does the eviction interface look like for sampling?
 	struct sampling_options sampling_opts = {
-		.sample_size = 40,
+		.sample_size = 5,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);

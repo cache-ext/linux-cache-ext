@@ -30,12 +30,13 @@ python3 bench_leveldb.py \
     --benchmark ycsb_a,ycsb_b,ycsb_c,ycsb_d,ycsb_f
 
 # Benchmark Google IO traces
-# TRACE_DIR="google_traces/data_cluster1_16TB_20240115_data-00000-of-00100"
-# python3 bench_io_trace.py \
-#     --cpu 8 \
-#     --policy-loader ./cache_ext_page_cache_ext_sampling.out \
-#     --results-file io_trace_results.json  \
-#     --trace-data-dir $TRACE_DIR
+python3 bench_io_trace.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_sampling.out \
+    --results-file cache_ext_io_trace_results.json  \
+    --trace-temp-data-dir google_traces/data_cluster1_16TB_20240115_app_spanner_temp \
+    --trace-data-dir /mydata_2/data_cluster1_16TB_20240115_app_spanner \
+    --benchmark trace_cluster1_16TB_20240115_app_spanner
 
 # Benchmark filesearch workload with MRU
 python3 bench_filesearch.py \

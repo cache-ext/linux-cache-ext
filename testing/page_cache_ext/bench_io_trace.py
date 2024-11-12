@@ -160,7 +160,7 @@ class IOTraceBenchmark(BenchmarkFramework):
             "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
             # "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
         )
-        configs = add_config_option("iteration", list(range(1, 15)), configs)
+        configs = add_config_option("iteration", list(range(1, 2)), configs)
         return configs
 
     def benchmark_prepare(self, config):
