@@ -29,6 +29,15 @@ python3 bench_leveldb.py \
     --fadvise-hints "" \
     --benchmark ycsb_a,ycsb_b,ycsb_c,ycsb_d,ycsb_f
 
+# Benchmark LevelDB with LFU
+python3 bench_twitter_trace.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_sampling.out \
+    --results-file ./baseline_twitter_traces.json \
+    --leveldb-db /mydata/leveldb_twitter_cluster34_db \
+    --benchmark twitter_cluster34_bench
+
+
 # Benchmark Google IO traces
 # TRACE_DIR="google_traces/data_cluster1_16TB_20240115_data-00000-of-00100"
 # python3 bench_io_trace.py \
