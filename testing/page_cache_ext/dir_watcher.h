@@ -44,12 +44,15 @@ int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recurs
 		// Check if dir
 		struct stat sb;
 		if (stat(filepath, &sb) == -1) {
+			free(filepath);
 			perror("stat");
 			return -1;
 		}
 		if (S_ISDIR(sb.st_mode)) {
-			if (!recursive)
+			if (!recursive) {
+				free(filepath);
 				continue;
+			}
 			ret = initialize_watch_dir_map(filepath, watch_dir_map_fd, recursive);
 			if (ret < 0) {
 				closedir(dir);
