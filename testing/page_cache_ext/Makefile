@@ -1,10 +1,12 @@
 # Define the compiler and the flags
 # See: https://stackoverflow.com/questions/76035116/cannot-use-ebpf-kptr-ref-feature
-CLANG ?= clang-14
-BPFTOOL ?= bpftool
+CLANG ?= clang-19
+BPFTOOL ?= ../../tools/bpf/bpftool/bpftool
 CFLAGS = -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -c -g -Wall
 USERSPACE_CFLAGS = -O2 -fsanitize=address -g -Wall
 USERSPACE_LINKER_FLAGS = -L/usr/local/lib64 -lbpf
+
+# -L/../../tools/lib/bpf
 
 # Define the BPF program source and the output object file
 BPF_SRC = page_cache_ext_simple.bpf.c page_cache_ext_mru.bpf.c page_cache_ext_mglru.bpf.c

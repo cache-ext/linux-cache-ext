@@ -11,7 +11,6 @@ CLEANUP_TASKS = []
 
 
 class KernelCompilationBenchmark(BenchmarkFramework):
-
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
         super().__init__("kernel_compilation_benchmark", benchresults_cls, cli_args)
         self.cache_ext_policy = CacheExtPolicy(
@@ -34,16 +33,16 @@ class KernelCompilationBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
+        configs = add_config_option("cgroup_size", [6 * GiB], configs)
         configs = add_config_option(
-            "cgroup_size", [6 * GiB], configs
-        )
-        configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            "cgroup_name",
+            [DEFAULT_BASELINE_CGROUP],
+            configs,
             # "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
         )
         configs = add_config_option("benchmark", ["kernel_compilation"], configs)
         configs = add_config_option("iteration", [1], configs)
-        
+
         policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
         for config in configs:
             if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
@@ -90,8 +89,8 @@ class KernelCompilationBenchmark(BenchmarkFramework):
             self.cache_ext_policy.stop()
         enable_smt()
 
-        clean_cmd = ["sudo", "make", "-C", self.args.data_dir, "clean"]
-        run(clean_cmd)
+        touch_cmd = ["sudo", "touch", f"{self.args.data_dir}/include/linux/mm_types.h"]
+        run(touch_cmd)
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = {"runtime_sec": self.end_time - self.start_time}
@@ -110,6 +109,8 @@ def main():
             "Kernel directory not found: %s" % kernel_comp_benchmark.args.data_dir
         )
     log.info("Kernel directory: %s", kernel_comp_benchmark.args.data_dir)
+    clean_cmd = ["sudo", "make", "-C", kernel_comp_benchmark.args.data_dir, "clean"]
+    run(clean_cmd)
     kernel_comp_benchmark.benchmark()
 
 

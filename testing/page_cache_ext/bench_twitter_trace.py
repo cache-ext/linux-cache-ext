@@ -154,7 +154,6 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
 
 
 class LevelDBTwitterTraceBenchmark(BenchmarkFramework):
-
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
         super().__init__("leveldb_twitter_trace_benchmark", benchresults_cls, cli_args)
         if self.args.leveldb_temp_db is None:
@@ -204,7 +203,9 @@ class LevelDBTwitterTraceBenchmark(BenchmarkFramework):
         )
         configs = add_config_option("cgroup_size_pct", [10], configs)
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name",
+            [DEFAULT_CACHE_EXT_CGROUP],
+            configs,
             # "cgroup_name",
             # [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP],
             # configs,

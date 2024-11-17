@@ -113,7 +113,6 @@ def plot_groupped_bars(
     legend_loc="best",
     text_center_list=None,
 ):
-
     if label_fontsize is None:
         label_fontsize = fontsize
 
@@ -143,7 +142,7 @@ def plot_groupped_bars(
             for j, v in enumerate(xticks + offsets[i]):
                 if text_center_list and j in text_center_list:
                     plt.text(
-                        v+0.075*bar_width,
+                        v + 0.075 * bar_width,
                         ylimit / 2,
                         str(int(gpplot.y_values[i][j] / 1000)) + "K",
                         ha="center",
@@ -154,7 +153,7 @@ def plot_groupped_bars(
                     )
                 else:
                     plt.text(
-                        v+0.075*bar_width,
+                        v + 0.075 * bar_width,
                         gpplot.y_values[i][j] + measurement_offset,
                         str(int(gpplot.y_values[i][j] / 1000)) + "K",
                         ha="center",
@@ -207,9 +206,9 @@ def assert_only_differs_in_fields(configs: List[Dict], fields: List[str]):
         for config in copied_configs
     ]
     for config in copied_configs:
-        assert (
-            copied_configs[0] == config
-        ), f"Configs differ in fields other than {fields}. Configs: {configs}"
+        assert copied_configs[0] == config, (
+            f"Configs differ in fields other than {fields}. Configs: {configs}"
+        )
 
 
 def leveldb_plot_ycsb_results(
@@ -364,9 +363,7 @@ def bench_plot_groupped_results(
                 ys[idx] = ys[idx] / max_value_for_idx * 100
         print("Normalized y_values: ", y_values)
 
-    gpplot = GrouppedBarPlot(
-        names, y_values, groups, colors, y_label=y_label
-    )
+    gpplot = GrouppedBarPlot(names, y_values, groups, colors, y_label=y_label)
     assert gpplot.num_bars == len(colors), "gpplot.num_bars = %d, len(colors) = %d" % (
         gpplot.num_bars,
         len(colors),

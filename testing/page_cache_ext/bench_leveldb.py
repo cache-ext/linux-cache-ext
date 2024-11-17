@@ -106,7 +106,6 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
 
 
 class LevelDBBenchmark(BenchmarkFramework):
-
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
         super().__init__("leveldb_benchmark", benchresults_cls, cli_args)
         if self.args.leveldb_temp_db is None:
@@ -160,12 +159,12 @@ class LevelDBBenchmark(BenchmarkFramework):
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
-        configs = add_config_option(
-            "cgroup_size", [10 * GiB], configs
-        )
+        configs = add_config_option("cgroup_size", [10 * GiB], configs)
         configs = add_config_option(
             # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
-            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name",
+            [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP],
+            configs,
         )
         # For baseline cgroup only, add fadvise options
         fadvise_hints = parse_strings_string(self.args.fadvise_hints)
@@ -213,7 +212,9 @@ class LevelDBBenchmark(BenchmarkFramework):
         with edit_yaml_file(bench_file) as bench_config:
             bench_config["leveldb"]["data_dir"] = leveldb_temp_db_dir
             bench_config["workload"]["runtime_seconds"] = config["runtime_seconds"]
-            bench_config["workload"]["warmup_runtime_seconds"] = config["warmup_runtime_seconds"]
+            bench_config["workload"]["warmup_runtime_seconds"] = config[
+                "warmup_runtime_seconds"
+            ]
         cmd = [
             "sudo",
             "cgexec",

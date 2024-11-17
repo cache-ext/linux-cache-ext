@@ -1,0 +1,134 @@
+[
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 30,
+            "warmup_runtime_seconds": 30,
+            "benchmark": "twitter_cluster34_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 899.25,
+            "read_throughput_avg": 14018.92,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 14918.17,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 10871.34,
+            "insert_latency_p99": 30204.24,
+            "read_latency_avg": 561044.08,
+            "latency_avg": 561044.08,
+            "read_latency_p99": 5382797.72,
+            "latency_p99": 5382797.72,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 30,
+            "warmup_runtime_seconds": 30,
+            "benchmark": "twitter_cluster34_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "cache_ext_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 1043.28,
+            "read_throughput_avg": 16228.57,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 17271.86,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 11696.74,
+            "insert_latency_p99": 96862.1,
+            "read_latency_avg": 483265.48,
+            "latency_avg": 483265.48,
+            "read_latency_p99": 4955951.58,
+            "latency_p99": 4955951.58,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 120,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster34_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "cache_ext_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 991.7,
+            "read_throughput_avg": 15044.11,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 16035.81,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 12421.68,
+            "insert_latency_p99": 102086.43,
+            "read_latency_avg": 522296.02,
+            "latency_avg": 522296.02,
+            "read_latency_p99": 5115701.0,
+            "latency_p99": 5115701.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 120,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster34_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 890.67,
+            "read_throughput_avg": 13759.1,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 14649.78,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 10911.52,
+            "insert_latency_p99": 32060.11,
+            "read_latency_avg": 571857.48,
+            "latency_avg": 571857.48,
+            "read_latency_p99": 5424730.0,
+            "latency_p99": 5424730.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]
