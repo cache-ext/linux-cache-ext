@@ -31,11 +31,15 @@ class CacheExtPolicy:
         self.has_started = False
         self._policy_thread = None
 
-    def start(self):
+    def start(self, cgroup_size: int=0):
         if self.has_started:
             raise Exception("Policy already started")
         self.has_started = True
         cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
+
+        if cgroup_size:
+            cmd += ["--cgroup_size", str(cgroup_size)]
+
         log.info("Starting policy thread: %s", cmd)
         self._policy_thread = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -44,7 +48,7 @@ class CacheExtPolicy:
 
         # For some reason, running a command with `sudo` messes up the terminal.
         # This is a workaround to fix it.
-        run(["stty", "sane"])
+        # run(["stty", "sane"])
         if self._policy_thread.poll() is not None:
             raise Exception(
                 "Policy thread exited unexpectedly: %s"
