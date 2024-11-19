@@ -163,6 +163,84 @@ static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx, struct 
 	// 	main_list_size = 0;
 }
 
+#define MAIN_ITER_FN(id) 								\
+static int bpf_s3fifo_score_main_iter_fn_##id(int idx, struct cache_ext_list_node *a) 	\
+{ 											\
+	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) 		\
+		return CACHE_EXT_CONTINUE_ITER; 					\
+ 											\
+	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) 		\
+		return CACHE_EXT_CONTINUE_ITER; 					\
+ 											\
+	struct folio_metadata *data = get_folio_metadata(a->folio); 			\
+	if (!data) { 									\
+		bpf_printk("cache_ext: score_fn: Failed to get metadata\n"); 		\
+		return CACHE_EXT_CONTINUE_ITER; 					\
+	} 										\
+ 											\
+	s64 freq = __sync_sub_and_fetch(&data->freq, 1); 				\
+	if (freq < id) { 								\
+		/*data->freq = 0;*/ 							\
+		return CACHE_EXT_EVICT_NODE; 						\
+	} 										\
+ 											\
+	return CACHE_EXT_CONTINUE_ITER; 						\
+}
+
+MAIN_ITER_FN(0)
+MAIN_ITER_FN(1)
+MAIN_ITER_FN(2)
+MAIN_ITER_FN(3)
+
+static void evict_main_iter(struct page_cache_ext_eviction_ctx *eviction_ctx, struct mem_cgroup *memcg)
+{
+	/*
+	 * Iterate from head. If freq > 0, move to tail, freq--.
+	 * Otherwise, evict. (When evicting, move to tail in the meantime).
+	 */
+
+	struct cache_ext_iterate_opts opts = {
+		.continue_list = CACHE_EXT_ITERATE_SELF,
+		.continue_mode = CACHE_EXT_ITERATE_TAIL,
+		.evict_list = CACHE_EXT_ITERATE_SELF,
+		.evict_mode = CACHE_EXT_ITERATE_TAIL,
+	};
+
+	if (bpf_cache_ext_list_iterate_extended(memcg, main_list, bpf_s3fifo_score_main_iter_fn_0, &opts,
+						eviction_ctx) < 0) {
+		bpf_printk("cache_ext: evict: Failed to iterate main_list\n");
+		return;
+	}
+
+	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
+		if (bpf_cache_ext_list_iterate_extended(memcg, main_list, bpf_s3fifo_score_main_iter_fn_1, &opts,
+							eviction_ctx) < 0) {
+			bpf_printk("cache_ext: evict: Failed to iterate main_list\n");
+			return;
+		}
+	} else {
+		return;
+	}
+
+	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
+		if (bpf_cache_ext_list_iterate_extended(memcg, main_list, bpf_s3fifo_score_main_iter_fn_2, &opts,
+							eviction_ctx) < 0) {
+			bpf_printk("cache_ext: evict: Failed to iterate main_list\n");
+			return;
+		}
+	} else {
+		return;
+	}
+
+	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
+		if (bpf_cache_ext_list_iterate_extended(memcg, main_list, bpf_s3fifo_score_main_iter_fn_3, &opts,
+							eviction_ctx) < 0) {
+			bpf_printk("cache_ext: evict: Failed to iterate main_list\n");
+			return;
+		}
+	}
+}
+
 static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct mem_cgroup *memcg)
 {
 	/*
@@ -200,7 +278,7 @@ void BPF_STRUCT_OPS(s3fifo_evict_folios, struct page_cache_ext_eviction_ctx *evi
 	if (small_list_size >= cache_size / 15 || main_list_size <= 2 * small_list_size)
 		evict_small(eviction_ctx, memcg);
 	else
-		evict_main(eviction_ctx, memcg);
+		evict_main_iter(eviction_ctx, memcg);
 }
 
 void BPF_STRUCT_OPS(s3fifo_folio_accessed, struct folio *folio) {
@@ -214,7 +292,7 @@ void BPF_STRUCT_OPS(s3fifo_folio_accessed, struct folio *folio) {
 	}
 
 	// Cap frequency at 3
-	if (__sync_add_and_fetch(&data->freq, 1) >= 3)
+	if (__sync_add_and_fetch(&data->freq, 1) > 3)
 		data->freq = 3;
 }
 
