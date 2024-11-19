@@ -182,6 +182,9 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 	struct cache_ext_list_node *node;
 	bpf_callback_t bpf_iter_fn = (bpf_callback_t)iter_fn;
 
+	if (ctx->nr_folios_to_evict >= ARRAY_SIZE(ctx->folios_to_evict))
+		return CACHE_EXT_EVICT_ARRAY_FILLED;
+
 	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
 	read_lock(&registry->lock);
 
@@ -275,6 +278,9 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 
 	if (!cache_ext_validate_iterate_opts(opts))
 		return -1;
+
+	if (ctx->nr_folios_to_evict >= ARRAY_SIZE(ctx->folios_to_evict))
+		return CACHE_EXT_EVICT_ARRAY_FILLED;
 
 	// TODO: pass this from caller
 	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
