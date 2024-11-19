@@ -13,11 +13,14 @@ char _license[] SEC("license") = "GPL";
 
 // Set from userspace. In terms of number of pages.
 // TODO: change
-#define CACHE_SIZE (((1ull << 30) * 2) / 4096)
-const volatile size_t cache_size = CACHE_SIZE;
+
+//#define CACHE_SIZE (((1ull << 30) * 2) / 4096)
+#define CACHE_SIZE (((1ull << 20) * 200) / 4096)
+const volatile size_t cache_size = 0;
 
 struct folio_metadata {
 	s64 freq;
+	bool in_main;
 };
 
 struct ghost_entry {
@@ -36,7 +39,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct ghost_entry);
 	__type(value, u8);
-	__uint(max_entries, CACHE_SIZE); // TODO: change
+	//__uint(max_entries, CACHE_SIZE); // TODO: change
 	__uint(map_flags, BPF_F_NO_COMMON_LRU);  // Per-CPU LRU eviction logic
 } ghost_map SEC(".maps");
 
@@ -47,7 +50,8 @@ static u64 small_list;
  * This is an approximate value based on what we choose to evict, not what is
  * actually evicted.
  */
-static u64 small_list_size = 0;
+static s64 small_list_size = 0;
+static s64 main_list_size = 0;
 
 static inline bool is_folio_relevant(struct folio *folio) {
 	if (!folio || !folio->mapping || !folio->mapping->host)
@@ -129,8 +133,10 @@ static int bpf_s3fifo_score_small_fn(int idx, struct cache_ext_list_node *a)
 	}
 
 	// Move to main list if freq > 1
-	if (data->freq > 1)
+	if (data->freq > 1) {
+		data->in_main = true;
 		return CACHE_EXT_CONTINUE_ITER;
+	}
 
 	// Else, evict
 	return CACHE_EXT_EVICT_NODE;
@@ -144,7 +150,7 @@ static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx, struct 
 	 */
 
 	struct sampling_options opts = {
-		.sample_size = 32,
+		.sample_size = 10,
 	};
 
 	if (bpf_cache_ext_list_sample(memcg, main_list, bpf_s3fifo_score_main_fn, &opts,
@@ -152,6 +158,9 @@ static void evict_main(struct page_cache_ext_eviction_ctx *eviction_ctx, struct 
 		bpf_printk("cache_ext: evict: Failed to sample main_list\n");
 		return;
 	}
+
+	// if (__sync_sub_and_fetch(&main_list_size, eviction_ctx->nr_folios_to_evict) < 0)
+	// 	main_list_size = 0;
 }
 
 static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct mem_cgroup *memcg)
@@ -159,7 +168,7 @@ static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct
 	/*
 	 * Iterate from head. If freq > 1, move to main list, otherwise evict.
 	 * (When evicting, move to tail in the meantime).
-	 * 
+	 *
 	 * Use the iterate interface.
 	 */
 
@@ -176,13 +185,19 @@ static void evict_small(struct page_cache_ext_eviction_ctx *eviction_ctx, struct
 		return;
 	}
 
-	__sync_fetch_and_sub(&small_list_size, opts.nr_folios_continue + opts.nr_folios_evict);
+	if (__sync_fetch_and_sub(&small_list_size, opts.nr_folios_continue) < 0)
+		small_list_size = 0;
+
+	if (__sync_fetch_and_add(&main_list_size, opts.nr_folios_continue) < 0)
+		main_list_size = opts.nr_folios_continue;
 }
 
 void BPF_STRUCT_OPS(s3fifo_evict_folios, struct page_cache_ext_eviction_ctx *eviction_ctx,
 		    struct mem_cgroup *memcg)
 {
-	if (small_list_size >= cache_size / 10)
+	// bpf_printk("cache_ext: evict_folios: main_list_size: %lld, small_list_size: %lld, cache_size: %lld\n",
+	// 	   main_list_size, small_list_size, cache_size);
+	if (small_list_size >= cache_size / 15 || main_list_size <= 2 * small_list_size)
 		evict_small(eviction_ctx, memcg);
 	else
 		evict_main(eviction_ctx, memcg);
@@ -206,11 +221,11 @@ void BPF_STRUCT_OPS(s3fifo_folio_accessed, struct folio *folio) {
 void BPF_STRUCT_OPS(s3fifo_folio_evicted, struct folio *folio) {
 	u64 key = (u64)folio;
 	u8 ghost_val = 0;
-	
-	if (bpf_cache_ext_list_del(folio)) {
-		bpf_printk("cache_ext: Failed to delete folio from sampling_list\n");
-		return;
-	}
+
+	// if (bpf_cache_ext_list_del(folio)) {
+	// 	bpf_printk("cache_ext: Failed to delete folio from sampling_list\n");
+	// 	return;
+	// }
 
 	struct ghost_entry ghost_key = {
 		.address_space = (u64)folio->mapping->host,
@@ -221,8 +236,21 @@ void BPF_STRUCT_OPS(s3fifo_folio_evicted, struct folio *folio) {
 	if (bpf_map_update_elem(&ghost_map, &ghost_key, &ghost_val, BPF_ANY))
 		bpf_printk("cache_ext: evicted: Failed to add to ghost_map\n");
 
-	if (bpf_map_delete_elem(&folio_metadata_map, &key))
-		bpf_printk("cache_ext: evicted: Failed to delete metadata\n");
+	struct folio_metadata *data = get_folio_metadata(folio);
+	if (!data) {
+		//bpf_printk("cache_ext: evicted: Failed to get metadata\n");
+		return;
+	}
+
+	if (data->in_main)
+		__sync_fetch_and_sub(&main_list_size, 1);
+	else
+		__sync_fetch_and_sub(&small_list_size, 1);
+
+	bpf_map_delete_elem(&folio_metadata_map, &key);
+
+	// if (bpf_map_delete_elem(&folio_metadata_map, &key))
+	// 	bpf_printk("cache_ext: evicted: Failed to delete metadata\n");
 }
 
 /*
@@ -241,8 +269,11 @@ void BPF_STRUCT_OPS(s3fifo_folio_added, struct folio *folio) {
 	u64 list_to_add;
 	if (folio_in_ghost(folio)) {
 		list_to_add = main_list;
+		new_meta.in_main = true;
+		__sync_fetch_and_add(&main_list_size, 1);
 	} else {
 		list_to_add = small_list;
+		new_meta.in_main = false;
 		__sync_fetch_and_add(&small_list_size, 1);
 	}
 
