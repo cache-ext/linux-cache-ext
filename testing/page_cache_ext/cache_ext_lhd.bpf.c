@@ -146,7 +146,6 @@ static inline void update_class(struct lhd_class *class) {
 	}
 }
 
-// TODO: verify these values are scaled accurately
 static inline void stretch_distribution(s32 delta) {
 	int i;
 	bpf_for(i, 0, NUM_CLASSES) {
@@ -166,7 +165,6 @@ static inline void stretch_distribution(s32 delta) {
 	}
 }
 
-// TODO: verify these values are scaled accurately
 static inline void compress_distribution(s32 delta) {
 	int i;
 	bpf_for(i, 0, NUM_CLASSES) {
@@ -192,19 +190,21 @@ static inline void compress_distribution(s32 delta) {
 
 static inline void adapt_age_coarsening(void) {
 	ewma_num_objects = ewma_decay(ewma_num_objects);
-	ewma_num_objects = ewma_decay(ewma_num_objects_mass);
+	ewma_num_objects_mass = ewma_decay(ewma_num_objects_mass);
 
-	ewma_num_objects += num_objects;
-	ewma_num_objects_mass += 1;  // TODO: adjust
+	ewma_num_objects += num_objects * NUM_OBJECTS_SCALING_FACTOR;
+	ewma_num_objects_mass += 1;
 
-	u64 num_objects = ewma_num_objects / ewma_num_objects_mass;
+	u64 num_objects_coarsening = ewma_num_objects / ewma_num_objects_mass;
 
-	u64 optimal_age_coarsening = 1 * num_objects / (AGE_COARSENING_ERROR_TOLERANCE * MAX_AGE);
+	u64 optimal_age_coarsening =
+		1 * num_objects_coarsening * AGE_COARSENING_ERROR_TOLERANCE / MAX_AGE;
 
 	if (num_reconfigurations == 5 || num_reconfigurations == 25) {
 		u32 optimal_age_coarsening_log2 = 1;
 
-		while ((1 << optimal_age_coarsening_log2) < optimal_age_coarsening)
+		while ((1 << optimal_age_coarsening_log2) * NUM_OBJECTS_SCALING_FACTOR <
+		       optimal_age_coarsening)
 			optimal_age_coarsening_log2++;
 
 		s32 delta = optimal_age_coarsening_log2 - age_coarsening_shift;
@@ -238,7 +238,9 @@ static inline void model_hit_density(void) {
 			lifetime_unconditoned += total_events;
 
 			if (total_events > TOTAL_EVENTS_THRESH)
-				cls->hit_densities[index & MAX_AGE_MASK] = total_hits / lifetime_unconditoned;
+				cls->hit_densities[index & MAX_AGE_MASK] =
+					total_hits * HIT_DENSITY_SCALING_FACTOR /
+					lifetime_unconditoned;
 			else
 				cls->hit_densities[index & MAX_AGE_MASK] = 0;
 		}
@@ -263,7 +265,7 @@ int reconfigure(void) {
 }
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg) {
-	int i;
+	uint32_t i;
 
 	lhd_list = bpf_cache_ext_ds_registry_new_list(memcg);
 	if (lhd_list == 0) {
@@ -277,11 +279,12 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(lhd_init, struct mem_cgroup *memcg) {
 	 * initialize the hit densities.
 	 */
 	bpf_for(i, 0, NUM_CLASSES) {
-		int j;
+		uint32_t j;
 
+		// Initialize hit densities to GDSF
 		struct lhd_class *cls = &classes[i];
 		bpf_for(j, 0, MAX_AGE) {
-			cls->hit_densities[j] = INIT_HIT_DENSITY;
+			cls->hit_densities[j] = 1 * HIT_DENSITY_SCALING_FACTOR * (i + 1) / (j + 1);
 		}
 	}
 
@@ -375,7 +378,7 @@ void BPF_STRUCT_OPS(lhd_folio_accessed, struct folio *folio) {
 
 	u64 *hits = cls->hits + age;
 
-	__sync_fetch_and_add(hits, 1);
+	__sync_fetch_and_add(hits, 1 * HIT_SCALING_FACTOR);
 
 	__sync_fetch_and_add(&timestamp, 1);
 
@@ -414,7 +417,7 @@ void BPF_STRUCT_OPS(lhd_folio_evicted, struct folio *folio) {
 
 	evictions = cls->evictions + age;
 
-	__sync_fetch_and_add(evictions, 1);
+	__sync_fetch_and_add(evictions, 1 * HIT_SCALING_FACTOR);
 
 	__sync_fetch_and_sub(&num_objects, 1);
 
