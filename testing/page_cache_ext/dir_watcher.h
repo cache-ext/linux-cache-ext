@@ -16,7 +16,9 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
-#define inode_watchlist_map(skel) ((skel)->maps.inode_watchlist)
+#define inode_watchlist_map(skel) 		((skel)->maps.inode_watchlist)
+#define watch_dir_path_map(skel)		((skel)->rodata->watch_dir_path)
+#define watch_dir_path_len_map(skel)	((skel)->rodata->watch_dir_path_len)
 
 int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recursive) {
 	int ret;
@@ -29,7 +31,6 @@ int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recurs
 		return errno;
 	}
 
-	// TODO: handle nested directories
 	while ((ent = readdir(dir)) != NULL) {
 		if (strncmp(ent->d_name, ".", 1) == 0 || strncmp(ent->d_name, "..", 2) == 0)
 			continue;
@@ -53,6 +54,8 @@ int initialize_watch_dir_map(const char *path, int watch_dir_map_fd, bool recurs
 				free(filepath);
 				continue;
 			}
+
+			// Recurse for nested directories
 			ret = initialize_watch_dir_map(filepath, watch_dir_map_fd, recursive);
 			if (ret < 0) {
 				closedir(dir);

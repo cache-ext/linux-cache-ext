@@ -112,6 +112,9 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	watch_dir_path_len_map(skel) = strlen(watch_dir_path);
+	strcpy(watch_dir_path_map(skel), watch_dir_path);
+
 	if (cache_ext_fifo_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
 		ret = 1;

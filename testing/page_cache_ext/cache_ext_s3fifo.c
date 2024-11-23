@@ -141,6 +141,10 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
+	// Set watch_dir
+	watch_dir_path_len_map(skel) = strlen(watch_dir_path);
+	strcpy(watch_dir_path_map(skel), watch_dir_path);
+
 	if (cache_ext_s3fifo_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
 		ret = 1;

@@ -134,6 +134,9 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	watch_dir_path_len_map(skel) = strlen(watch_dir_path);
+	strcpy(watch_dir_path_map(skel), watch_dir_path);
+
 	if (cache_ext_lhd_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
 		ret = 1;
@@ -155,8 +158,6 @@ int main(int argc, char **argv) {
 		ret = 1;
 		goto cleanup;
 	}
-
-	// TODO: initialize hit densities properly	
 
 	link = bpf_map__attach_struct_ops(skel->maps.lhd_ops);
 	if (link == NULL) {

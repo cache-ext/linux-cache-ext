@@ -311,7 +311,7 @@ void BPF_STRUCT_OPS(lhd_evict_folios, struct page_cache_ext_eviction_ctx *evicti
 	       struct mem_cgroup *memcg)
 {
 	struct sampling_options opts = {
-		.sample_size = 32,
+		.sample_size = 16,
 	};
 
 	if (bpf_cache_ext_list_sample(memcg, lhd_list, bpf_lhd_score_fn, &opts, eviction_ctx)) {

@@ -182,7 +182,7 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_folio_evicted hook! :D\n");
 	if (bpf_cache_ext_list_del(folio)) {
-		bpf_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
+		dbg_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
 		return;
 	}
 
@@ -252,7 +252,7 @@ void BPF_STRUCT_OPS(sampling_evict_folios,
 		"page_cache_ext: Hi from the sampling_evict_folios hook! :D\n");
 
 	struct sampling_options sampling_opts = {
-		.sample_size = 40,
+		.sample_size = 20,
 	};
 	bpf_cache_ext_list_sample(memcg, sampling_list, bpf_lfu_score_fn,
 				  &sampling_opts, eviction_ctx);
