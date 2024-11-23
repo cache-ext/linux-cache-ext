@@ -507,9 +507,9 @@ void valid_folios_del(struct folio *folio) {
 
 			cache_ext_ds_registry_write_lock(folio);
 			// Is it in a list currently? If so, remove it.
-			if (!list_empty(&cur->cache_ext_node->node)) {
-				list_del(&cur->cache_ext_node->node);
-			}
+			// if (!list_empty(&cur->cache_ext_node->node)) {
+			list_del(&cur->cache_ext_node->node);
+			//}
 			cache_ext_ds_registry_write_unlock(folio);
 			cache_ext_list_node_free(cur->cache_ext_node);
 
