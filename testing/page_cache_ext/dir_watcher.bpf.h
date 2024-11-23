@@ -6,6 +6,13 @@
 #include <bpf/bpf_tracing.h>
 #include "vmlinux.h"
 
+#ifndef likely
+#define likely(x) __builtin_expect(!!(x), 1)
+#endif
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
 #define FMODE_CREATED 0x100000 /* linux: include/linux/fs.h */
 #define BPF_PATH_MAX 128
 
@@ -64,7 +71,7 @@ int BPF_PROG(vfs_open_exit, struct path *path, struct file *file, long ret) {
 
     // Check if inode was previously inode_watchlisted - means it was previously
     // deleted
-    // TODO: clean this up
+    // TODO: can be deleted
     u8 *ret2 = bpf_map_lookup_elem(&inode_watchlist, &inode_no);
     if (ret2 != NULL) {  // Remove inode from inode_watchlist
         err = bpf_map_delete_elem(&inode_watchlist, &inode_no);
@@ -76,6 +83,10 @@ int BPF_PROG(vfs_open_exit, struct path *path, struct file *file, long ret) {
     }
 
     // Check if file is in our desired directory tree
+    if (unlikely(!watch_dir_path_len)) {
+        bpf_printk("watch_dir_path_len is 0!!\n");
+        return 0;
+    }
     if (strncmp(filepath, watch_dir_path, watch_dir_path_len) != 0) return 0;
 
     // Add inode to inode_watchlist

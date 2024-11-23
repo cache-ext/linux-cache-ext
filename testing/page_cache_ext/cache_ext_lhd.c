@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	if (initialize_watch_dir_map(watch_dir_path, bpf_map__fd(inode_watchlist_map(skel)), true)) {
+	if (initialize_watch_dir_map(watch_dir_path, bpf_map__fd(inode_watchlist_map(skel)), false)) {
 		perror("Failed to initialize watch_dir map");
 		ret = 1;
 		goto cleanup;
@@ -162,6 +162,13 @@ int main(int argc, char **argv) {
 	link = bpf_map__attach_struct_ops(skel->maps.lhd_ops);
 	if (link == NULL) {
 		perror("Failed to attach struct_ops map");
+		ret = 1;
+		goto cleanup;
+	}
+
+	// This is necessary for the dir_watcher functionality
+	if (cache_ext_lhd_bpf__attach(skel)) {
+		perror("Failed to attach BPF skeleton");
 		ret = 1;
 		goto cleanup;
 	}

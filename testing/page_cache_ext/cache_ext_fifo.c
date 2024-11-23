@@ -134,6 +134,13 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
+	// This is necessary for the dir_watcher functionality
+	if (cache_ext_fifo_bpf__attach(skel)) {
+		perror("Failed to attach BPF skeleton");
+		ret = 1;
+		goto cleanup;
+	}
+
 	// Wait for keyboard input
 	printf("Press any key to exit...\n");
 	getchar();
