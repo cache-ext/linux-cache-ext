@@ -18,6 +18,8 @@ char _license[] SEC("license") = "GPL";
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+#define INT64_MAX  (9223372036854775807LL)
+
 // #define DEBUG
 #ifdef DEBUG
 #define dbg_printk(fmt, ...) bpf_printk(fmt, ##__VA_ARGS__)
@@ -181,10 +183,10 @@ void BPF_STRUCT_OPS(sampling_folio_evicted, struct folio *folio)
 {
 	dbg_printk(
 		"page_cache_ext: Hi from the sampling_folio_evicted hook! :D\n");
-	if (bpf_cache_ext_list_del(folio)) {
-		dbg_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
-		return;
-	}
+	// if (bpf_cache_ext_list_del(folio)) {
+	// 	dbg_printk("page_cache_ext: Failed to delete folio from sampling_list\n");
+	// 	return;
+	// }
 
 	u64 key = (u64)folio;
 	bpf_map_delete_elem(&folio_metadata_map, &key);
@@ -223,7 +225,7 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
 	if (!meta_a) {
 		bpf_printk("page_cache_ext: Failed to get metadata\n");
-		return 0;
+		return INT64_MAX;
 	}
 	score = meta_a->accesses;
 	if (APP_TYPE == LEVELDB) {
@@ -236,10 +238,10 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	}
 
 	if (!folio_test_uptodate(a->folio) || !folio_test_lru(a->folio)) {
-		return -1;
+		return INT64_MAX;
 	}
 	if (folio_test_dirty(a->folio) || folio_test_writeback(a->folio)) {
-		return -1;
+		return INT64_MAX;
 	}
 	return score;
 }
