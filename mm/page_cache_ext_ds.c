@@ -60,10 +60,8 @@ void cache_ext_list_node_free(struct cache_ext_list_node *node)
 int __cache_ext_list_add_impl(struct cache_ext_list *list, struct folio *folio,
 			      bool tail)
 {
-	struct valid_folios_set *valid_folios_set =
-		folio_to_valid_folios_set(folio);
-	spinlock_t *bucket_lock =
-		valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
 	spin_lock(bucket_lock);
 	struct valid_folio *valid_folio = valid_folios_lookup(folio);
 	if (!valid_folio) {
@@ -88,6 +86,7 @@ int __cache_ext_list_add_impl(struct cache_ext_list *list, struct folio *folio,
 		list_add_tail(&valid_folio->cache_ext_node->node, &list->head);
 	else
 		list_add(&valid_folio->cache_ext_node->node, &list->head);
+
 	cache_ext_ds_registry_write_unlock(folio);
 	spin_unlock(bucket_lock);
 	return 0;
@@ -106,10 +105,8 @@ int cache_ext_list_add_tail(struct cache_ext_list *list, struct folio *folio)
 int cache_ext_list_move(struct cache_ext_list *list, struct folio *folio,
 			bool tail)
 {
-	struct valid_folios_set *valid_folios_set =
-		folio_to_valid_folios_set(folio);
-	spinlock_t *bucket_lock =
-		valid_folios_set_get_bucket_lock(valid_folios_set, folio);
+	struct valid_folios_set *valid_folios_set = folio_to_valid_folios_set(folio);
+	spinlock_t *bucket_lock = valid_folios_set_get_bucket_lock(valid_folios_set, folio);
 	spin_lock(bucket_lock);
 	struct valid_folio *valid_folio = valid_folios_lookup(folio);
 	if (!valid_folio) {
@@ -457,11 +454,10 @@ void __putback_list_nodes(struct cache_ext_list *list, struct cache_ext_list_nod
 	}
 }
 
-int
-__bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
-			  s64(score_fn)(struct cache_ext_list_node *a),
-			  struct sampling_options *opts,
-			  struct page_cache_ext_eviction_ctx *ctx)
+int __bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
+				s64(score_fn)(struct cache_ext_list_node *a),
+				struct sampling_options *opts,
+				struct page_cache_ext_eviction_ctx *ctx)
 {
 	// Select the first select_size elements with the lowest score out of
 	// sample_size elements in the given list.
@@ -481,11 +477,6 @@ __bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 		return -1;
 	}
 	write_lock(&registry->lock);
-	if (list_empty(&list_ptr->head)) {
-		pr_warn("cache_ext: list is empty\n");
-		write_unlock(&registry->lock);
-		return 0;
-	}
 
 	// Optimization: Snip the front of the list and select the pages without
 	// holding the lock.
@@ -500,6 +491,9 @@ __bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			&list_ptr->head, struct cache_ext_list_node, node);
 		sample_folios_arr[i] = node;
 		sample_folios_size++;
+		// if (node->node.next == NULL || node->node.prev == NULL) {
+		// 	pr_warn("cache_ext: node->node.next or node->node.prev is NULL\n");
+		// }
 		list_del_init(&node->node);
 	}
 
@@ -618,8 +612,7 @@ cache_ext_ds_registry_from_memcg(struct mem_cgroup *memcg)
 
 struct cache_ext_list *cache_ext_ds_registry_new_list(struct mem_cgroup *memcg)
 {
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_memcg(memcg);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
 	struct cache_ext_list *list = cache_ext_list_alloc();
 	if (list == NULL) {
 		return NULL;
@@ -663,8 +656,7 @@ cache_ext_ds_registry_from_folio(struct folio *folio)
 	// Get pgdat from folio
 	pg_data_t *pgdat = folio_pgdat(folio);
 	// Get node cgroup
-	struct mem_cgroup_per_node *node_cgroup =
-		memcg->nodeinfo[pgdat->node_id];
+	struct mem_cgroup_per_node *node_cgroup = memcg->nodeinfo[pgdat->node_id];
 	// Get valid folios set from cgroup
 	return &node_cgroup->cache_ext_ds_registry;
 }
@@ -677,29 +669,25 @@ cache_ext_ds_registry_from_mem_cgroup(struct mem_cgroup *memcg)
 
 void cache_ext_ds_registry_read_lock(struct folio *folio)
 {
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_folio(folio);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_folio(folio);
 	read_lock(&registry->lock);
 }
 
 void cache_ext_ds_registry_read_unlock(struct folio *folio)
 {
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_folio(folio);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_folio(folio);
 	read_unlock(&registry->lock);
 }
 
 void cache_ext_ds_registry_write_lock(struct folio *folio)
 {
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_folio(folio);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_folio(folio);
 	write_lock(&registry->lock);
 }
 
 void cache_ext_ds_registry_write_unlock(struct folio *folio)
 {
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_folio(folio);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_folio(folio);
 	write_unlock(&registry->lock);
 }
 
@@ -708,8 +696,7 @@ void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg)
 	int bkt;
 	struct hlist_node *tmp;
 	struct cache_ext_list *cur_list;
-	struct cache_ext_ds_registry *registry =
-		cache_ext_ds_registry_from_memcg(memcg);
+	struct cache_ext_ds_registry *registry = cache_ext_ds_registry_from_memcg(memcg);
 	write_lock(&registry->lock);
 	hash_for_each_safe(registry->ds_hash, bkt, tmp, cur_list, h_node) {
 		hash_del(&cur_list->h_node);
@@ -717,8 +704,7 @@ void cache_ext_ds_registry_del_all(struct mem_cgroup *memcg)
 	}
 	registry->nr_entries = 0;
 	write_unlock(&registry->lock);
-	struct valid_folios_set *valid_folios_set =
-		memcg_to_valid_folios_set(memcg);
+	struct valid_folios_set *valid_folios_set = memcg_to_valid_folios_set(memcg);
 	valid_folios_clear_list(valid_folios_set);
 }
 
