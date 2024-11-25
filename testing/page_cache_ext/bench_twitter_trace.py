@@ -1,15 +1,43 @@
 import os
 import re
+import sys
+import json
+import uuid
+import select
 import logging
 import argparse
-from time import sleep
-from typing import Dict, List
+import subprocess
 
-from bench_lib import *
+from time import sleep
+from bench_lib import (
+    CacheExtPolicy,
+    BenchmarkFramework,
+    BenchResults,
+    DEFAULT_BASELINE_CGROUP,
+    DEFAULT_CACHE_EXT_CGROUP,
+    drop_page_cache,
+    disable_swap,
+    disable_smt,
+    recreate_cache_ext_cgroup,
+    recreate_baseline_cgroup,
+    run,
+    check_output,
+    add_config_option,
+    parse_strings_string,
+    edit_yaml_file,
+    format_bytes_str,
+    set_sysctl,
+)
+from typing import Dict, List
+from ruamel.yaml import YAML
+from contextlib import suppress, contextmanager
+
+yaml = YAML()
 
 
 log = logging.getLogger(__name__)
 GiB = 2**30
+MiB = 2**20
 CLEANUP_TASKS = []
 
 
@@ -18,6 +46,26 @@ def reset_database(db_dir: str, temp_db_dir: str):
     if not db_dir.endswith("/"):
         db_dir += "/"
     run(["rsync", "-avpl", "--delete", db_dir, temp_db_dir])
+
+
+def dir_size(path: str) -> int:
+    # Check that path exists and is a directory
+    if not os.path.exists(path):
+        raise Exception("Directory not found: %s" % path)
+    if not os.path.isdir(path):
+        raise Exception("Not a directory: %s" % path)
+    cmd = ["du", "-sb", path]
+    result = check_output(cmd)
+    return int(result.split()[0])
+
+
+def file_size(path: str) -> int:
+    # Check that path exists and is a file
+    if not os.path.exists(path):
+        raise Exception("File not found: %s" % path)
+    if not os.path.isfile(path):
+        raise Exception("Not a file: %s" % path)
+    return os.path.getsize(path)
 
 
 def parse_leveldb_bench_results(stdout: str) -> Dict:
@@ -105,10 +153,10 @@ def parse_leveldb_bench_results(stdout: str) -> Dict:
     return results
 
 
-class LevelDBBenchmark(BenchmarkFramework):
+class LevelDBTwitterTraceBenchmark(BenchmarkFramework):
 
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
-        super().__init__("leveldb_benchmark", benchresults_cls, cli_args)
+        super().__init__("leveldb_twitter_trace_benchmark", benchresults_cls, cli_args)
         if self.args.leveldb_temp_db is None:
             self.args.leveldb_temp_db = self.args.leveldb_db + "_temp"
         self.cache_ext_policy = CacheExtPolicy(
@@ -144,13 +192,7 @@ class LevelDBBenchmark(BenchmarkFramework):
         parser.add_argument(
             "--benchmark",
             type=str,
-            default="ycsb_a,ycsb_c",
-        )
-        parser.add_argument(
-            "--fadvise-hints",
-            type=str,
-            default=",SEQUENTIAL,NOREUSE,DONTNEED",
-            help="Specify the fadvise hints to use for the baseline cgroup",
+            default="twitter_cluster_17_bench",
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
@@ -160,29 +202,17 @@ class LevelDBBenchmark(BenchmarkFramework):
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
+        configs = add_config_option("cgroup_size_pct", [5, 10], configs)
         configs = add_config_option(
-            "cgroup_size", [10 * GiB], configs
-        )
-        configs = add_config_option(
-            # "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            # "cgroup_name",
+            # [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP],
+            # configs,
         )
-        # For baseline cgroup only, add fadvise options
-        fadvise_hints = parse_strings_string(self.args.fadvise_hints)
-        new_configs = []
+        policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
         for config in configs:
-            if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
-                for fadvise in fadvise_hints:
-                    new_config = config.copy()
-                    new_config["fadvise"] = fadvise
-                    new_configs.append(new_config)
-            elif config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
-                policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
+            if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
                 config["policy_loader"] = policy_loader_name
-                new_configs.append(config)
-            else:
-                new_configs.append(config)
-        configs = new_configs
         configs = add_config_option("iteration", list(range(1, 4)), configs)
         return configs
 
@@ -191,16 +221,39 @@ class LevelDBBenchmark(BenchmarkFramework):
         drop_page_cache()
         disable_swap()
         disable_smt()
-        if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
-            recreate_cache_ext_cgroup(limit_in_bytes=config["cgroup_size"])
+        db_size = dir_size(self.args.leveldb_temp_db)
+        cgroup_size = int(db_size * config["cgroup_size_pct"] / 100)
+        # Add enough memory to load trace file into memory
+        bench_binary_dir = self.args.bench_binary_dir
+        bench_file = "../leveldb/config/%s.yaml" % config["benchmark"]
+        bench_file = os.path.abspath(os.path.join(bench_binary_dir, bench_file))
+        with open(bench_file, "r") as f:
+            bench_config = yaml.load(f)
+        trace_file = bench_config["workload"]["trace_file"]
+        trace_file_size = file_size(trace_file)
+        # Load the trace file in memory to charge it to another cgroup
+        cmd = ["cat", trace_file]
+        run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # cgroup_size += int(trace_file_size * 1.5)
+        # cgroup_size *= 3
+        cgroup_size += 20 * MiB
+        cgroup_size = max(cgroup_size, 70 * MiB)
 
-            policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
-            if policy_loader_name == "cache_ext_s3fifo.out":
-                self.cache_ext_policy.start(cgroup_size=config["cgroup_size"])
+        log.info(
+            "DB size: %s, trace file size: %s, cgroup size: %s",
+            format_bytes_str(db_size),
+            format_bytes_str(trace_file_size),
+            format_bytes_str(cgroup_size),
+        )
+
+        if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
+            recreate_cache_ext_cgroup(limit_in_bytes=cgroup_size)
+            if self.cache_ext_policy.loader_path == "./cache_ext_s3fifo.out":
+                self.cache_ext_policy.start(cgroup_size=cgroup_size)
             else:
                 self.cache_ext_policy.start()
         else:
-            recreate_baseline_cgroup(limit_in_bytes=config["cgroup_size"])
+            recreate_baseline_cgroup(limit_in_bytes=cgroup_size)
 
     def benchmark_cmd(self, config):
         bench_binary_dir = self.args.bench_binary_dir
@@ -213,7 +266,9 @@ class LevelDBBenchmark(BenchmarkFramework):
         with edit_yaml_file(bench_file) as bench_config:
             bench_config["leveldb"]["data_dir"] = leveldb_temp_db_dir
             bench_config["workload"]["runtime_seconds"] = config["runtime_seconds"]
-            bench_config["workload"]["warmup_runtime_seconds"] = config["warmup_runtime_seconds"]
+            bench_config["workload"]["warmup_runtime_seconds"] = config[
+                "warmup_runtime_seconds"
+            ]
         cmd = [
             "sudo",
             "cgexec",
@@ -233,15 +288,12 @@ class LevelDBBenchmark(BenchmarkFramework):
             extra_envs["ENABLE_BPF_SCAN_MAP"] = "1"
         if config["enable_mmap"]:
             extra_envs["LEVELDB_MAX_MMAPS"] = "10000"
-        if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP and config["fadvise"] != "":
-            extra_envs["ENABLE_SCAN_FADVISE"] = config["fadvise"]
         return extra_envs
 
     def after_benchmark(self, config):
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
         sleep(2)
-        enable_smt()
 
     def parse_results(self, stdout: str) -> BenchResults:
         results = parse_leveldb_bench_results(stdout)
@@ -250,7 +302,10 @@ class LevelDBBenchmark(BenchmarkFramework):
 
 def main():
     global log
-    leveldb_bench = LevelDBBenchmark()
+    leveldb_bench = LevelDBTwitterTraceBenchmark()
+    set_sysctl("vm.dirty_background_ratio", 1)
+    set_sysctl("vm.dirty_ratio", 30)
+    CLEANUP_TASKS.append(lambda: set_sysctl("vm.dirty_background_ratio", 10))
     # Check that leveldb path exists
     if not os.path.exists(leveldb_bench.args.leveldb_db):
         raise Exception(
