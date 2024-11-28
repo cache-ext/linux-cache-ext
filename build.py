@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
+import argparse
+import logging
 import os
 import sys
-import logging
-import argparse
-
-from typing import List, Dict
 from multiprocessing import cpu_count
+from typing import List, Dict
+
 from yanniszark_common.cmdutils import run
 
 log = logging.getLogger(__name__)
@@ -16,18 +16,26 @@ def parse_args():
     parser = argparse.ArgumentParser("Kernel build helper")
     # Add build subcommand
     subparsers = parser.add_subparsers(dest="command")
-    build_parser = subparsers.add_parser("build", help="Build the kernel")
-    build_parser.add_argument("--debug", action="store_true",
-                              help="Enable debug mode for build")
-    build_parser.add_argument("--no-clang", action="store_true", default=False,
-                              help="Use clang as the compiler")
-    install_parser = subparsers.add_parser("install", help="Install the kernel")
-    install_parser.add_argument("--debug", action="store_true",
-                                help="Enable debug mode for installation")
-    install_parser.add_argument("--no-clang", action="store_true", default=False,
-                                help="Use clang as the compiler")
-    install_parser.add_argument("--enable-mglru", action="store_true",
-                                help="Enable MGLRU")
+    base_subparser = argparse.ArgumentParser(add_help=False)
+    base_subparser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode"
+    )
+    base_subparser.add_argument(
+        "--no-clang",
+        action="store_true",
+        default=False,
+        help="Use clang as the compiler",
+    )
+    base_subparser.add_argument(
+        "--enable-mglru", action="store_true", help="Enable MGLRU"
+    )
+
+    build_parser = subparsers.add_parser(
+        "build", help="Build the kernel", parents=[base_subparser]
+    )
+    install_parser = subparsers.add_parser(
+        "install", help="Install the kernel", parents=[base_subparser]
+    )
 
     return parser.parse_args()
 
@@ -95,6 +103,16 @@ def make(args: List[str] = [], env=None, parallel=True, sudo=False):
     run(cmd, env=env)
 
 
+def build(args, llvm_env):
+    log.info("Building the kernel")
+    add_default_config_options()
+    if args.debug:
+        add_debug_config_options()
+    add_mglru_config_options(args.enable_mglru)
+    make(env=llvm_env)
+    run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
+
+
 def main():
     global log
     logging.basicConfig(level=logging.INFO)
@@ -107,25 +125,15 @@ def main():
         }
     else:
         llvm_envvars = {}
+
     llvm_env = os.environ.copy()
     llvm_env.update(llvm_envvars)
 
-
     if args.command == "build":
-        log.info("Building the kernel")
-        add_default_config_options()
-        if args.debug:
-            add_debug_config_options()
-        make(env=llvm_env)
-        run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
+        build(args, llvm_env)
     elif args.command == "install":
+        build(args, llvm_env)
         log.info("Installing the kernel")
-        add_default_config_options()
-        if args.debug:
-            add_debug_config_options()
-        add_mglru_config_options(args.enable_mglru)
-        make(env=llvm_env)
-        run(["python3", "./scripts/clang-tools/gen_compile_commands.py"])
         make(["modules_install"], env=llvm_env, sudo=True)
         make(["install"], env=llvm_env, sudo=True)
 
