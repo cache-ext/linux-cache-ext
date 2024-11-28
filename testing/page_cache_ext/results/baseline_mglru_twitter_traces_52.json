@@ -1,0 +1,101 @@
+[
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster52_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 813.51,
+            "insert_throughput_avg": 2593.13,
+            "read_throughput_avg": 29428.27,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 32834.9,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 0.0,
+            "latency_avg": 0.0,
+            "read_latency_p99": 0.0,
+            "latency_p99": 0.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster52_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 2
+        },
+        "results": {
+            "update_throughput_avg": 803.39,
+            "insert_throughput_avg": 2561.03,
+            "read_throughput_avg": 29075.12,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 32439.54,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 0.0,
+            "latency_avg": 0.0,
+            "read_latency_p99": 0.0,
+            "latency_p99": 0.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster52_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 3
+        },
+        "results": {
+            "update_throughput_avg": 825.08,
+            "insert_throughput_avg": 2629.61,
+            "read_throughput_avg": 29840.26,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 33294.95,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 0.0,
+            "latency_avg": 0.0,
+            "read_latency_p99": 0.0,
+            "latency_p99": 0.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]
