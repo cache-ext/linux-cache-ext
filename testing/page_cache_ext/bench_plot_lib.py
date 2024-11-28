@@ -28,7 +28,7 @@ def exists_config_in_results(results: List[BenchRun], config: Dict) -> bool:
 
 
 def configs_select(results: List[BenchRun], config_match: Dict) -> List[Dict]:
-    return [config_match for r in results if config_match.items() <= r.config.items()]
+    return [r.config for r in results if config_match.items() <= r.config.items()]
 
 
 def results_select(
@@ -235,6 +235,7 @@ def leveldb_plot_ycsb_results(
         "ycsb_b": "YCSB\nB",
         "ycsb_c": "YCSB\nC",
         "ycsb_d": "YCSB\nD",
+        "ycsb_e": "YCSB\nE",
         "ycsb_f": "YCSB\nF",
         "trace19": "Twitter\n19",
         "trace37": "Twitter\n37",
@@ -293,6 +294,7 @@ def bench_plot_groupped_results(
     bar_width=1,
     label_fontsize=None,
     legend_loc="best",
+    normalize_per_group=False,
 ):
     """Plot bench results.
 
@@ -327,6 +329,8 @@ def bench_plot_groupped_results(
             print(y_res)
             # If len(y_res) > 1, assert they only differ in the "iteration" field
             if len(y_res) > 1:
+                # print("More than 1 result for ", config_match)
+                # print("Configs: ", cm_res)
                 assert_only_differs_in_fields(cm_res, ["iteration"])
                 y_res = [np.mean(y_res)]
             elif len(y_res) == 0:
@@ -337,12 +341,12 @@ def bench_plot_groupped_results(
         y_values.append(ys)
 
     print(y_values)
-    for idx in range(len(y_values[0])):
-        values_for_bench = [ys[idx] for ys in y_values]
-        values_for_bench_normalized = list(
-            map(lambda x: "%.2f%%" % (x / values_for_bench[0] * 100), values_for_bench))
-        print("Values for bench %d: %s" % (idx, values_for_bench_normalized))
-    print(names)
+    if normalize_per_group:
+        for idx in range(len(y_values[0])):
+            max_value_for_idx = max([ys[idx] for ys in y_values])
+            for ys in y_values:
+                ys[idx] = ys[idx] / max_value_for_idx * 100
+        print("Normalized y_values: ", y_values)
 
     gpplot = GrouppedBarPlot(
         names, y_values, groups, colors, y_label=y_label
