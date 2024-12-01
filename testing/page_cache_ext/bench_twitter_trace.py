@@ -306,6 +306,7 @@ def main():
     set_sysctl("vm.dirty_background_ratio", 1)
     set_sysctl("vm.dirty_ratio", 30)
     CLEANUP_TASKS.append(lambda: set_sysctl("vm.dirty_background_ratio", 10))
+    CLEANUP_TASKS.append(lambda: set_sysctl("vm.dirty_ratio", 20))
     # Check that leveldb path exists
     if not os.path.exists(leveldb_bench.args.leveldb_db):
         raise Exception(
