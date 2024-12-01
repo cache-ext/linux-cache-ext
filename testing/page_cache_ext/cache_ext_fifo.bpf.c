@@ -50,10 +50,10 @@ void BPF_STRUCT_OPS(fifo_evict_folios, struct page_cache_ext_eviction_ctx *evict
 }
 
 void BPF_STRUCT_OPS(fifo_folio_evicted, struct folio *folio) {
-	if (bpf_cache_ext_list_del(folio)) {
-		bpf_printk("cache_ext: Failed to delete folio from list\n");
-		return;
-	}
+	// if (bpf_cache_ext_list_del(folio)) {
+	// 	bpf_printk("cache_ext: Failed to delete folio from list\n");
+	// 	return;
+	// }
 }
 
 void BPF_STRUCT_OPS(fifo_folio_added, struct folio *folio) {
