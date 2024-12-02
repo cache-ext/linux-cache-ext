@@ -42,7 +42,7 @@ class CacheExtPolicy:
         if cgroup_size:
             cmd += ["--cgroup_size", str(cgroup_size)]
         if per_cgroup:
-            cmd += ["--cgroup", self.cgroup_path]
+            cmd += ["--cgroup", f"/sys/fs/cgroup/{cgroup}"]
 
         log.info("Starting policy thread: %s", cmd)
         self._policy_thread = subprocess.Popen(
