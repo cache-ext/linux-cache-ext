@@ -9,6 +9,7 @@
 char _license[] SEC("license") = "GPL";
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define INT64_MAX  (9223372036854775807LL)
 
 // #define DEBUG
 #ifdef DEBUG
@@ -87,8 +88,10 @@ char STAT_INSERTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "inserted_total_pages";
 char STAT_ACCESSED_SCAN_PAGES[MAX_STAT_NAME_LEN] = "accessed_scan_pages";
 char STAT_ACCESSED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "accessed_total_pages";
 
+static s64 scan_pages = 0;
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
+#ifdef DEBUG
 	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
 	if (!counter) {
 		u64 zero = 0;
@@ -98,15 +101,19 @@ inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	if (counter) {
 		__sync_fetch_and_add(counter, delta);
 	}
+#endif
 }
 
 inline s64 get_stat(char (*stat_name)[MAX_STAT_NAME_LEN]) {
+#ifdef DEBUG
 	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
 	if (!counter) {
 		bpf_printk("page_cache_ext: Failed to get stat: %s\n", *stat_name);
 		return 0;
 	}
 	return *counter;
+#endif
+	return 0;
 }
 
 inline u64 get_sampling_list(enum ListType list_type)
@@ -200,7 +207,8 @@ void BPF_STRUCT_OPS(mixed_folio_added, struct folio *folio)
 	update_stat(&STAT_TOTAL_PAGES, 1);
 	update_stat(&STAT_INSERTED_TOTAL_PAGES, 1);
 	if (touched_by_scan) {
-		update_stat(&STAT_SCAN_PAGES, 1);
+		__sync_fetch_and_add(&scan_pages, 1);
+		//update_stat(&STAT_SCAN_PAGES, 1);
 		update_stat(&STAT_INSERTED_SCAN_PAGES, 1);
 	}
 
@@ -287,7 +295,8 @@ void BPF_STRUCT_OPS(mixed_folio_evicted, struct folio *folio)
 	bpf_map_delete_elem(&folio_metadata_map, &key);
 	// Update stats
 	if (touched_by_scan) {
-		update_stat(&STAT_SCAN_PAGES, -1);
+		__sync_fetch_and_sub(&scan_pages, 1);
+		//update_stat(&STAT_SCAN_PAGES, -1);
 		update_stat(&STAT_EVICTED_SCAN_PAGES, 1);
 	}
 	update_stat(&STAT_TOTAL_PAGES, -1);
@@ -325,7 +334,7 @@ static s64 bpf_lfu_score_fn(struct cache_ext_list_node *a)
 	meta_a = bpf_map_lookup_elem(&folio_metadata_map, &key_a);
 	if (!meta_a) {
 		bpf_printk("page_cache_ext: Failed to get metadata\n");
-		return 0;
+		return INT64_MAX;
 	}
 	// if (!meta_a->touched_by_scan) {
 	// 	bpf_printk("page_cache_ext: Found page not in scan in score_fn\n");
@@ -348,7 +357,7 @@ void BPF_STRUCT_OPS(mixed_evict_folios,
 	dbg_printk(
 		"page_cache_ext: Hi from the mixed_evict_folios hook! :D\n");
     // When evicting, use the scan list first always
-	s64 num_scan_pages = get_stat(&STAT_SCAN_PAGES);
+	s64 num_scan_pages = scan_pages;
 	if (num_scan_pages == 0) {
 		bpf_printk("page_cache_ext: No pages to evict\n");
 		return;
