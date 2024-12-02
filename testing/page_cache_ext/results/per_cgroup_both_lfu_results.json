@@ -1,0 +1,119 @@
+[
+    {
+        "config": {
+            "name": "percgroup_benchmark",
+            "cpus": 8,
+            "runtime_seconds": 180,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "ycsb_c",
+            "cgroup_config": {
+                "name": "cache_ext_split_cgroups",
+                "cache_ext": true,
+                "policy1_size": 10737418240,
+                "policy2_size": 1073741824,
+                "split_cgroups": true,
+                "which_policy": 1
+            },
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 7840.89,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 7840.89,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1017212.01,
+            "latency_avg": 1017212.01,
+            "read_latency_p99": 13954248.14,
+            "latency_p99": 13954248.14,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0,
+            "rg_iters": 82
+        }
+    },
+    {
+        "config": {
+            "name": "percgroup_benchmark",
+            "cpus": 8,
+            "runtime_seconds": 180,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "ycsb_c",
+            "cgroup_config": {
+                "name": "cache_ext_split_cgroups",
+                "cache_ext": true,
+                "policy1_size": 10737418240,
+                "policy2_size": 1073741824,
+                "split_cgroups": true,
+                "which_policy": 1
+            },
+            "iteration": 2
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 7868.29,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 7868.29,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1013460.4,
+            "latency_avg": 1013460.4,
+            "read_latency_p99": 13802147.42,
+            "latency_p99": 13802147.42,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0,
+            "rg_iters": 85
+        }
+    },
+    {
+        "config": {
+            "name": "percgroup_benchmark",
+            "cpus": 8,
+            "runtime_seconds": 180,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "ycsb_c",
+            "cgroup_config": {
+                "name": "cache_ext_split_cgroups",
+                "cache_ext": true,
+                "policy1_size": 10737418240,
+                "policy2_size": 1073741824,
+                "split_cgroups": true,
+                "which_policy": 1
+            },
+            "iteration": 3
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 7884.88,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 7884.88,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1011425.08,
+            "latency_avg": 1011425.08,
+            "read_latency_p99": 14042902.35,
+            "latency_p99": 14042902.35,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0,
+            "rg_iters": 85
+        }
+    }
+]
