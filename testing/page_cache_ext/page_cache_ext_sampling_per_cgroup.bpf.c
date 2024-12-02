@@ -76,6 +76,7 @@ char STAT_EVICTED_TOTAL_PAGES[MAX_STAT_NAME_LEN] = "evicted_total_pages";
 int APP_TYPE = LEVELDB;
 
 inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
+#ifdef DEBUG
 	// bpf_printk("update_stat!\n");
 	u64 *counter = bpf_map_lookup_elem(&stats, stat_name);
 	if (!counter) {
@@ -86,6 +87,7 @@ inline void update_stat(char (*stat_name)[MAX_STAT_NAME_LEN], s64 delta) {
 	if (counter) {
 		__sync_fetch_and_add(counter, delta);
 	}
+#endif
 }
 
 inline bool is_folio_relevant(struct folio *folio)

@@ -118,36 +118,36 @@ class CgroupConfig(dict):
 
 # Policy 1 is LFU, Polcy 2 is MRU
 cgroup_configs: List[CgroupConfig] = [
-    CgroupConfig(
-        name="baseline_one_cgroup",
-        cache_ext=False,
-        policy1_size=10 * GiB,
-        policy2_size=1 * GiB,
-        split_cgroups=False,
-    ),
-    CgroupConfig(
-        name="baseline_two_cgroups",
-        cache_ext=False,
-        policy1_size=10 * GiB,
-        policy2_size=1 * GiB,
-        split_cgroups=True,
-    ),
-    CgroupConfig(
-        name="cache_ext_policy1_one_cgroup",
-        cache_ext=True,
-        policy1_size=10 * GiB,
-        policy2_size=1 * GiB,
-        split_cgroups=False,
-        which_policy=1
-    ),
-        CgroupConfig(
-        name="cache_ext_policy2_one_cgroup",
-        cache_ext=True,
-        policy1_size=10 * GiB,
-        policy2_size=1 * GiB,
-        split_cgroups=False,
-        which_policy=2
-    ),
+    # CgroupConfig(
+    #     name="baseline_one_cgroup",
+    #     cache_ext=False,
+    #     policy1_size=10 * GiB,
+    #     policy2_size=1 * GiB,
+    #     split_cgroups=False,
+    # ),
+    # CgroupConfig(
+    #     name="baseline_two_cgroups",
+    #     cache_ext=False,
+    #     policy1_size=10 * GiB,
+    #     policy2_size=1 * GiB,
+    #     split_cgroups=True,
+    # ),
+    # CgroupConfig(
+    #     name="cache_ext_policy1_one_cgroup",
+    #     cache_ext=True,
+    #     policy1_size=10 * GiB,
+    #     policy2_size=1 * GiB,
+    #     split_cgroups=False,
+    #     which_policy=1
+    # ),
+    #     CgroupConfig(
+    #     name="cache_ext_policy2_one_cgroup",
+    #     cache_ext=True,
+    #     policy1_size=10 * GiB,
+    #     policy2_size=1 * GiB,
+    #     split_cgroups=False,
+    #     which_policy=2
+    # ),
     CgroupConfig(
         name="cache_ext_split_cgroups",
         cache_ext=True,
@@ -195,31 +195,31 @@ class PerCgroupBenchmark(BenchmarkFramework):
         parser.add_argument(
             "--search-path",
             type=str,
-            help="Path to search for files",
+            help="Watch directory",
         )
         parser.add_argument(
             "--data-dir",
             type=str,
             default="/mydata/filesearch_data",
-            help="Data directory",
+            help="Search data directory",
         )
         parser.add_argument(
             "--policy-loader",
             type=str,
             default="./page_cache_ext_sampling.out",
-            help="Specify the path to the policy loader binary",
+            help="Specify the path to the policy loader binary (YCSB)",
         )
         parser.add_argument(
             "--second-policy-loader",
             type=str,
             default="./page_cache_ext_mru.out",
-            help="Specify the path to the second policy loader binary",
+            help="Specify the path to the second policy loader binary (Search)",
         )
         parser.add_argument(
             "--leveldb-db",
             type=str,
             default="/mydata/leveldb_db",
-            help="Specify the directory to watch for cache_ext",
+            help="Specify the original LevelDB database directory",
         )
         parser.add_argument(
             "--leveldb-temp-db",
@@ -240,8 +240,8 @@ class PerCgroupBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
-        configs = add_config_option("runtime_seconds", [120], configs)
-        configs = add_config_option("warmup_runtime_seconds", [120], configs)
+        configs = add_config_option("runtime_seconds", [180], configs)
+        configs = add_config_option("warmup_runtime_seconds", [240], configs)
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
@@ -252,7 +252,7 @@ class PerCgroupBenchmark(BenchmarkFramework):
         #     "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
         # )
         configs = add_config_option("cgroup_config", cgroup_configs, configs)
-        configs = add_config_option("iteration", [1], configs)
+        configs = add_config_option("iteration", [1,2,3], configs)
         return configs
 
     def before_benchmark(self, config):
@@ -318,7 +318,7 @@ class PerCgroupBenchmark(BenchmarkFramework):
         pattern = "write"
         data_dir = self.args.data_dir
         rg_cmd = f"rg {pattern} {data_dir}"
-        seconds = config["runtime_seconds"] + config["warmup_runtime_seconds"] + 20
+        seconds = config["runtime_seconds"] + config["warmup_runtime_seconds"] + 25
         repeated_rg_cmd = f"end=$(( $(date +%s) + {seconds})); count=0; while [[ $(date +%s) < $end ]]; do {rg_cmd} &>/dev/null; ((count++)); done; echo $count"
         cgroup_name = cgroup_name_from_config(config["cgroup_config"], 2)
         cmd = [

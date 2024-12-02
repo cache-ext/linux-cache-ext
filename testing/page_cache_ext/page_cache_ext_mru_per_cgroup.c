@@ -38,9 +38,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 
 int main(int argc, char **argv)
 {
-	int ret;
-	struct page_cache_ext_mru_bpf *skel;
-	struct bpf_link *link;
+	int ret = 0;
+	struct page_cache_ext_mru_bpf *skel = NULL;
+	struct bpf_link *link = NULL;
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
 	// Parse command line arguments
@@ -87,26 +87,25 @@ int main(int argc, char **argv)
 	skel = page_cache_ext_mru_bpf__open();
 	if (skel == NULL) {
 		// Check errno for error
-		fprintf(stderr, "Failed to open BPF skeleton: %s\n",
-			strerror(errno));
-		return 1;
+		fprintf(stderr, "Failed to open BPF skeleton: %s\n", strerror(errno));
+		ret = 1;
+		goto out;
 	}
 
 	// Load programs
 	ret = page_cache_ext_mru_bpf__load(skel);
 	if (ret) {
-		fprintf(stderr, "Failed to load BPF skeleton: %s\n",
-			strerror(errno));
-		page_cache_ext_mru_bpf__destroy(skel);
-		return 1;
+		fprintf(stderr, "Failed to load BPF skeleton: %s\n", strerror(errno));
+		ret = 1;
+		goto out;
 	}
 
 	// Initialize watch_dir map
 	ret = initialize_watch_dir_map(watch_dir_full_path, bpf_map__fd(skel->maps.inode_watchlist), true);
 	if (ret) {
-		fprintf(stderr, "Failed to initialize watch_dir map: %s\n",
-			strerror(errno));
-		return 1;
+		fprintf(stderr, "Failed to initialize watch_dir map: %s\n", strerror(errno));
+		ret = 1;
+		goto out;
 	}
 
 	// Load struct_ops map
@@ -115,15 +114,18 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Failed to attach BPF struct_ops map: %s\n",
 			strerror(errno));
 		page_cache_ext_mru_bpf__destroy(skel);
-		return 1;
+		ret = 1;
+		goto out;
 	}
 
 	// Wait for keyboard input
 	printf("Press any key to exit...\n");
 	getchar();
 
+out:
 	// Exit
 	bpf_link__destroy(link);
 	page_cache_ext_mru_bpf__destroy(skel);
-	return 0;
+	close(cgroup_fd);
+	return ret;
 }

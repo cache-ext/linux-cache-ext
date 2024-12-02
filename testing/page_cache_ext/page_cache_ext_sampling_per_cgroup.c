@@ -108,15 +108,20 @@ int main(int argc, char **argv)
 	// Initialize inode_watchlist map
 	ret = initialize_watch_dir_map(args.watch_dir,
 				       bpf_map__fd(skel->maps.inode_watchlist), true);
-
-	// Pin scan_pids map
-	ret = bpf_map__pin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
-	if (ret < 0) {
-		fprintf(stderr, "Failed to pin scan_pids map: %s\n",
-			strerror(errno));
+	if (ret) {
+		fprintf(stderr, "Failed to initialize watch_dir map: %s\n", strerror(errno));
 		ret = 1;
 		goto out;
 	}
+
+	// Pin scan_pids map
+	// ret = bpf_map__pin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
+	// if (ret < 0) {
+	// 	fprintf(stderr, "Failed to pin scan_pids map: %s\n",
+	// 		strerror(errno));
+	// 	ret = 1;
+	// 	goto out;
+	// }
 
 	// Load struct_ops map
 	link = bpf_map__attach_cache_ext_ops(skel->maps.sampling_ops, cgroup_fd);
@@ -142,13 +147,13 @@ int main(int argc, char **argv)
 
 	// Exit
 	// Unpin scan_pids map
-	ret = bpf_map__unpin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
-	if (ret < 0) {
-		fprintf(stderr, "Failed to unpin scan_pids map: %s\n",
-			strerror(errno));
-		ret = 1;
-		goto out;
-	}
+	// ret = bpf_map__unpin(skel->maps.scan_pids, "/sys/fs/bpf/cache_ext/scan_pids");
+	// if (ret < 0) {
+	// 	fprintf(stderr, "Failed to unpin scan_pids map: %s\n",
+	// 		strerror(errno));
+	// 	ret = 1;
+	// 	goto out;
+	// }
 out:
 	bpf_link__destroy(link);
 	page_cache_ext_sampling_bpf__destroy(skel);
