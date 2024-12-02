@@ -111,6 +111,7 @@ def plot_groupped_bars(
     legend_fontsize=12,
     label_fontsize=None,
     legend_loc="best",
+    text_center_list=None,
 ):
 
     if label_fontsize is None:
@@ -140,16 +141,28 @@ def plot_groupped_bars(
         )
         if show_measurements:
             for j, v in enumerate(xticks + offsets[i]):
-                plt.text(
-                    v,
-                    gpplot.y_values[i][j] + measurement_offset,
-                    str(int(gpplot.y_values[i][j] / 1000)) + "K",
-                    ha="center",
-                    rotation=measurement_rotation,
-                    fontsize=measurement_fontsize,
-                    color=gpplot.colors[i],
-                    weight="bold",
-                )
+                if text_center_list and j in text_center_list:
+                    plt.text(
+                        v+0.075*bar_width,
+                        ylimit / 2,
+                        str(int(gpplot.y_values[i][j] / 1000)) + "K",
+                        ha="center",
+                        rotation=measurement_rotation,
+                        fontsize=measurement_fontsize,
+                        color="white",
+                        weight="bold",
+                    )
+                else:
+                    plt.text(
+                        v+0.075*bar_width,
+                        gpplot.y_values[i][j] + measurement_offset,
+                        str(int(gpplot.y_values[i][j] / 1000)) + "K",
+                        ha="center",
+                        rotation=measurement_rotation,
+                        fontsize=measurement_fontsize,
+                        color=gpplot.colors[i],
+                        weight="bold",
+                    )
     plt.xticks(xticks, gpplot.groups, fontsize=fontsize)
     if gpplot.y_label:
         plt.ylabel(gpplot.y_label, fontsize=label_fontsize)
@@ -227,6 +240,7 @@ def leveldb_plot_ycsb_results(
     bar_width=1,
     label_fontsize=None,
     legend_loc="best",
+    text_center_list=None,
 ):
     bench_type_to_group = {
         "uniform": "Unif.\n(100/0)",
@@ -262,6 +276,7 @@ def leveldb_plot_ycsb_results(
         bar_width=bar_width,
         label_fontsize=label_fontsize,
         legend_loc=legend_loc,
+        text_center_list=text_center_list,
     )
 
 
@@ -295,6 +310,7 @@ def bench_plot_groupped_results(
     label_fontsize=None,
     legend_loc="best",
     normalize_per_group=False,
+    text_center_list=None,
 ):
     """Plot bench results.
 
@@ -370,4 +386,5 @@ def bench_plot_groupped_results(
         legend_fontsize=legend_fontsize,
         label_fontsize=label_fontsize,
         legend_loc=legend_loc,
+        text_center_list=text_center_list,
     )
