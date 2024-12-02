@@ -185,15 +185,15 @@ def make_name(config: Dict) -> str:
     if config["cgroup_name"] == DEFAULT_BASELINE_CGROUP:
         mglru = config.get("mglru", False)
         if mglru:
-            return "MGLRU"
+            return "MGLRU (Linux)"
         fadvise = config.get("fadvise", None)
         if fadvise == "DONTNEED":
-            return "FADVISE_DONTNEED"
+            return "FADVISE_DONTNEED (Linux)"
         elif fadvise == "NOREUSE":
-            return "FADVISE_NOREUSE"
+            return "FADVISE_NOREUSE (Linux)"
         elif fadvise == "SEQUENTIAL":
-            return "FADVISE_SEQUENTIAL"
-        return "Baseline"
+            return "FADVISE_SEQUENTIAL (Linux)"
+        return "Default (Linux)"
     elif config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
         return "cache_ext"
     return "<unknown>"
@@ -253,7 +253,7 @@ def leveldb_plot_ycsb_results(
         "ycsb_f": "YCSB\nF",
         "trace19": "Twitter\n19",
         "trace37": "Twitter\n37",
-        "mixed_get_scan": "Mixed Get/Scan",
+        "mixed_get_scan": "Mixed GET/SCAN",
     }
     return bench_plot_groupped_results(
         config_matches,
