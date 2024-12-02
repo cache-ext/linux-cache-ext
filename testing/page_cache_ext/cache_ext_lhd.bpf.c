@@ -159,8 +159,12 @@ static inline void stretch_distribution(s32 delta) {
 		}
 		bpf_for(j, 2, MAX_AGE + 1) { // MAX_AGE -2 -> 0
 			u32 index = MAX_AGE - j;
-			cls->hits[index & MAX_AGE_MASK] = cls->hits[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
-			cls->evictions[index & MAX_AGE_MASK] = cls->evictions[(j >> (-delta)) & MAX_AGE_MASK] / (1 << (-delta));
+			cls->hits[index & MAX_AGE_MASK] =
+				cls->hits[(j >> (-delta)) & MAX_AGE_MASK] /
+				(1 << (-delta));
+			cls->evictions[index & MAX_AGE_MASK] =
+				cls->evictions[(j >> (-delta)) & MAX_AGE_MASK] /
+				(1 << (-delta));
 		}
 	}
 }
@@ -172,12 +176,18 @@ static inline void compress_distribution(s32 delta) {
 		u32 j;
 
 		bpf_for(j, 0, MAX_AGE >> delta) {
-			cls->hits[j & MAX_AGE_MASK] = cls->hits[(j << delta) & MAX_AGE_MASK];
-			cls->evictions[j & MAX_AGE_MASK] = cls->evictions[(j << delta) & MAX_AGE_MASK];
+			cls->hits[j & MAX_AGE_MASK] =
+				cls->hits[(j << delta) & MAX_AGE_MASK];
+			cls->evictions[j & MAX_AGE_MASK] =
+				cls->evictions[(j << delta) & MAX_AGE_MASK];
 			int k;
 			bpf_for(k, 1, (1 << delta)) {
-				cls->hits[j & MAX_AGE_MASK] += cls->hits[((j << delta) + k) & MAX_AGE_MASK];
-				cls->evictions[j & MAX_AGE_MASK] += cls->evictions[((j << delta) + k) & MAX_AGE_MASK];
+				cls->hits[j & MAX_AGE_MASK] +=
+					cls->hits[((j << delta) + k) &
+						  MAX_AGE_MASK];
+				cls->evictions[j & MAX_AGE_MASK] +=
+					cls->evictions[((j << delta) + k) &
+						       MAX_AGE_MASK];
 			}
 		}
 
