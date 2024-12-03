@@ -38,10 +38,17 @@ class KernelCompilationBenchmark(BenchmarkFramework):
             "cgroup_size", [6 * GiB], configs
         )
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
+            "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            # "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP, DEFAULT_BASELINE_CGROUP], configs
         )
         configs = add_config_option("benchmark", ["kernel_compilation"], configs)
         configs = add_config_option("iteration", [1], configs)
+        
+        policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
+        for config in configs:
+            if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
+                config["policy_loader"] = policy_loader_name
+
         return configs
 
     def before_benchmark(self, config):
@@ -50,14 +57,20 @@ class KernelCompilationBenchmark(BenchmarkFramework):
         disable_smt()
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             recreate_cache_ext_cgroup(limit_in_bytes=config["cgroup_size"])
-            self.cache_ext_policy.start()
+
+            policy_loader_name = os.path.basename(self.cache_ext_policy.loader_path)
+            if policy_loader_name == "cache_ext_s3fifo.out":
+                self.cache_ext_policy.start(cgroup_size=config["cgroup_size"])
+            else:
+                self.cache_ext_policy.start()
         else:
             recreate_baseline_cgroup(limit_in_bytes=config["cgroup_size"])
         self.start_time = time()
 
     def benchmark_cmd(self, config):
         data_dir = self.args.data_dir
-        compilation_cmd = f"make -C '{data_dir}' -j8"
+        script_cmd = f"./bench_script_kernel_compile.sh {data_dir}"
+        # compilation_cmd = f"make -C '{data_dir}' -j8"
         cmd = [
             "sudo",
             "cgexec",
@@ -65,7 +78,7 @@ class KernelCompilationBenchmark(BenchmarkFramework):
             "memory:%s" % config["cgroup_name"],
             "/bin/sh",
             "-c",
-            compilation_cmd,
+            script_cmd,
         ]
         return cmd
 
