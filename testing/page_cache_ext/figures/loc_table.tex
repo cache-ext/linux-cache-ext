@@ -1,14 +1,16 @@
 \begin{table}
-\centering
 \caption{Lines of code required for each policy presented.}
 \label{tab:loc-per-policy}
-\begin{tabular}{lr}
+\begin{tabular}{lrr}
 \toprule
-  Policy &  Lines of Code \\
+Policy & eBPF LoC & Userspace LoC \\
 \midrule
-     MRU &            136 \\
-     LFU &            275 \\
-Get-Scan &            288 \\
+FIFO & 56 & 118 \\
+MRU & 101 & 87 \\
+LFU & 221 & 107 \\
+S3-FIFO & 287 & 139 \\
+GET-SCAN & 324 & 107 \\
+LHD & 366 & 152 \\
 \bottomrule
 \end{tabular}
 \end{table}
