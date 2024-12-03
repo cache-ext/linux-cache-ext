@@ -52,6 +52,8 @@ class KernelCompilationBenchmark(BenchmarkFramework):
         return configs
 
     def before_benchmark(self, config):
+        clean_cmd = ["sudo", "make", "-C", self.args.data_dir, "clean"]
+        run(clean_cmd)
         drop_page_cache()
         disable_swap()
         disable_smt()
