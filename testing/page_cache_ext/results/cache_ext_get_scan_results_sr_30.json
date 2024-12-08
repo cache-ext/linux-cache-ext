@@ -1,0 +1,104 @@
+[
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "cache_ext_test",
+            "policy_loader": "page_cache_ext_get_scan.out",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 2887.7,
+            "scan_throughput_avg": 39.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 2926.7,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1035839.55,
+            "latency_avg": 1035839.55,
+            "read_latency_p99": 14540583.16,
+            "latency_p99": 14540583.16,
+            "scan_latency_avg": 25634077.68,
+            "scan_latency_p99": 66765078.14,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "cache_ext_test",
+            "policy_loader": "page_cache_ext_get_scan.out",
+            "iteration": 2
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 2889.06,
+            "scan_throughput_avg": 39.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 2928.06,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1035247.61,
+            "latency_avg": 1035247.61,
+            "read_latency_p99": 14554403.06,
+            "latency_p99": 14554403.06,
+            "scan_latency_avg": 25631187.76,
+            "scan_latency_p99": 66523675.66,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    },
+    {
+        "config": {
+            "name": "leveldb_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 240,
+            "benchmark": "mixed_get_scan",
+            "cgroup_size": 10737418240,
+            "cgroup_name": "cache_ext_test",
+            "policy_loader": "page_cache_ext_get_scan.out",
+            "iteration": 3
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 0.0,
+            "read_throughput_avg": 2881.79,
+            "scan_throughput_avg": 38.84,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 2920.62,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 1037889.08,
+            "latency_avg": 1037889.08,
+            "read_latency_p99": 14619036.8,
+            "latency_p99": 14619036.8,
+            "scan_latency_avg": 25740125.09,
+            "scan_latency_p99": 66555964.78,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]
