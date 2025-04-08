@@ -215,14 +215,14 @@ def parse_cgroup_mem_stat(filename):
 def main():
     global log
     logging.basicConfig(level=logging.INFO)
-    cgroup = autodetect_mem_cgroup()
-    cgroup_mem_stat_file = f"/sys/fs/cgroup/{cgroup}/memory.stat"
-    cgroup_mem_stat = parse_cgroup_mem_stat(cgroup_mem_stat_file)
-    start_scan, start_reclaim = cgroup_mem_stat["pgscan_direct"], cgroup_mem_stat["pgsteal_direct"]
     args = parse_args()
     log.info("Creating test file of size %d bytes", args.workingset_size)
     if not test_file_exists(size_in_bytes=args.workingset_size):
         create_test_file(size_in_bytes=args.workingset_size)
+    # cgroup = autodetect_mem_cgroup()
+    # cgroup_mem_stat_file = f"/sys/fs/cgroup/{cgroup}/memory.stat"
+    # cgroup_mem_stat = parse_cgroup_mem_stat(cgroup_mem_stat_file)
+    # start_scan, start_reclaim = cgroup_mem_stat["pgscan_direct"], cgroup_mem_stat["pgsteal_direct"]
     log.info("Running test workload in a loop")
     log.info("Press Ctrl+C to stop the test")
     # Open the file and read it start to end in a loop

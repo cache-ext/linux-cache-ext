@@ -298,7 +298,7 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 		evict_list = list;
 	}
 
-	if (opts->continue_mode == CACHE_EXT_CONTINUE_ITER && opts->evict_mode == CACHE_EXT_CONTINUE_ITER)
+	if (opts->continue_mode == CACHE_EXT_ITERATE_SKIP && opts->evict_mode == CACHE_EXT_ITERATE_SKIP)
 		read_lock(&registry->lock);
 	else
 		write_lock(&registry->lock);

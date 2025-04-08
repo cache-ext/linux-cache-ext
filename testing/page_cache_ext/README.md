@@ -114,3 +114,12 @@ rsync -avpl --delete /mydata/leveldb_db/ /mydata/leveldb_db_temp
     cd /mydata/My-YCSB/build
     sudo cgexec -g memory:cache_ext_test ./run_leveldb ../leveldb/config/ycsb_a.yaml
     ```
+
+
+## Misc
+
+Clear page cache:
+
+```sh
+sudo sh -c "echo 1 > /proc/sys/vm/drop_caches"
+```

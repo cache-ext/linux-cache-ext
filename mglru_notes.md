@@ -38,6 +38,12 @@ Eviction:
     2. `isolate_folio`: Actual eviction if the previous step failed.
     3. If both of the above fail, just skip these folios and add them back in the end.
 
+Aging:
+(happens during eviction)
+1. `try_to_shrink_lruvec`
+2. `get_nr_to_scan`
+3. `should_run_aging` / `try_to_inc_max_seq`
+
 Tiers:
 - The max number of tiers is currently set to 4 (`MAX_NR_TIERS`)
 - Each page keeps track of refs through a file descriptor (`folio_lru_refs()`).

@@ -89,6 +89,7 @@ static int bpf_page_cache_ext_reg(void *kdata)
 		if (ret) {
 			pr_err("page_cache_ext: init failed with error code: %d\n",
 			       ret);
+			cache_ext_ds_registry_del_all(memcg);
 			return ret;
 		}
 	}
