@@ -36,7 +36,8 @@ CLANG_BPF_SYS_INCLUDES ?= $(shell $(CLANG) -v -E - </dev/null 2>&1 \
 all: 	page_cache_ext_mru.out page_cache_ext_simple.out \
 		page_cache_ext_sampling.out page_cache_ext_get_scan.out \
 		cache_ext_lhd.out cache_ext_s3fifo.out cache_ext_fifo.out \
-		page_cache_ext_mglru.out page_cache_ext_debug.out
+		page_cache_ext_mglru.out \
+		# page_cache_ext_debug.out
 
 $(VMLINUX_H):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)

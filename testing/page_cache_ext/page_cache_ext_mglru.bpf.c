@@ -263,6 +263,12 @@ static __u64 mglru_lists[MAX_NR_GENS];
  *    generations can resist stale information.
  */
 
+ struct ctrl_pos {
+	unsigned long refaulted;
+	unsigned long total;
+	int gain;
+};
+
 static inline void read_ctrl_pos(struct mglru_global_metadata *lrugen, int tier,
 			  int gain, struct ctrl_pos *pos)
 {
@@ -454,9 +460,9 @@ static inline bool lru_gen_add_folio(struct folio *folio)
 	 */
 	if (folio_test_active(folio))
 		seq = max_seq;
-	// else if ((folio_test_reclaim(folio) &&
-	// 	  (folio_test_dirty(folio) || folio_test_writeback(folio))))
-	// 	seq = max_seq - 1;
+	else if ((folio_test_reclaim(folio) &&
+		  (folio_test_dirty(folio) || folio_test_writeback(folio))))
+		seq = max_seq - 1;
 	else if (min_seq + MIN_NR_GENS >= max_seq)
 		seq = min_seq;
 	else
@@ -562,6 +568,7 @@ static inline bool try_to_inc_min_seq(struct mglru_global_metadata *lrugen)
 		return false;
 	}
 	WRITE_ONCE(lrugen->min_seq, lrugen->min_seq + 1);
+	reset_ctrl_pos(lrugen, true);
 	return true;
 }
 
@@ -631,6 +638,7 @@ static inline bool try_to_inc_max_seq(struct mglru_global_metadata *lrugen)
 struct eviction_metadata {
 	__u64 curr_gen;
 	__u64 next_gen;
+	__u64 iter_reached;
 };
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -710,6 +718,7 @@ static int mglru_iter_fn(int idx, struct cache_ext_list_node *a)
 		bpf_printk("cache_ext: iter_fn: Failed to get eviction metadata\n");
 		return CACHE_EXT_EVICT_NODE;
 	}
+	eviction_meta->iter_reached = idx;
 
 	// Get folio metadata
 	__u64 key = (__u64)a->folio;
@@ -718,7 +727,7 @@ static int mglru_iter_fn(int idx, struct cache_ext_list_node *a)
 	if (!meta) {
 		bpf_printk("cache_ext: iter_fn: Failed to get metadata\n");
 		// TODO: Maybe we should evict it instead?
-		return CACHE_EXT_CONTINUE_ITER;
+		return CACHE_EXT_EVICT_NODE;
 	}
 
 	int tier_threshold = get_tier_idx(lrugen);
@@ -740,6 +749,10 @@ static int mglru_iter_fn(int idx, struct cache_ext_list_node *a)
 	if (folio_test_locked(a->folio) || folio_test_writeback(a->folio) ||
 	    folio_test_dirty(a->folio)) {
 		// promote to next gen
+		int num_pages = folio_nr_pages(a->folio);
+		update_nr_pages_stat(lrugen, eviction_meta->curr_gen, -num_pages);
+		update_nr_pages_stat(lrugen, eviction_meta->next_gen, num_pages);
+		atomic_long_store(&meta->gen, eviction_meta->next_gen);
 		return CACHE_EXT_CONTINUE_ITER;
 	}
 	return CACHE_EXT_EVICT_NODE;
@@ -774,11 +787,11 @@ void BPF_STRUCT_OPS(mglru_evict_folios, struct page_cache_ext_eviction_ctx *evic
 	}
 
 	// Save eviction metadata for stats
-	struct eviction_metadata eviction_meta = {
+	struct eviction_metadata ev_meta = {
 		.curr_gen = oldest_gen,
 		.next_gen = next_gen
 	};
-	set_eviction_metadata(&eviction_meta);
+	set_eviction_metadata(&ev_meta);
 
 	assert_valid_gen_0(next_gen);
 
@@ -798,10 +811,23 @@ void BPF_STRUCT_OPS(mglru_evict_folios, struct page_cache_ext_eviction_ctx *evic
 		bpf_printk("cache_ext: Failed to iterate list\n");
 		return;
 	}
+	struct eviction_metadata *eviction_meta = get_eviction_metadata();
+	if (eviction_meta == NULL) return;
+	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict && eviction_meta->iter_reached > 500) {
+		int ret = bpf_cache_ext_list_iterate_extended(
+			memcg, oldest_gen_list, mglru_iter_fn, &opts, eviction_ctx);
+		if (ret < 0) {
+			bpf_printk("cache_ext: Failed to iterate list\n");
+			return;
+		}
+	}
 	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
-		bpf_printk("cache_ext: Failed to evict requested number of folios: %d/%d\n",
+		bpf_printk("cache_ext: Failed to evict requested number of folios: %d/%d. Used list idx %d, list ptr: %p. Iter reached: %d\n",
+				eviction_ctx->nr_folios_to_evict,
 				eviction_ctx->request_nr_folios_to_evict,
-			    eviction_ctx->nr_folios_to_evict);
+				oldest_gen,
+				oldest_gen_list,
+				eviction_meta->iter_reached);
 	}
 }
 

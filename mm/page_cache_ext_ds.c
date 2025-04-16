@@ -175,7 +175,7 @@ int cache_ext_list_iterate(struct mem_cgroup *memcg,
 			   struct page_cache_ext_eviction_ctx *ctx)
 {
 	uint64_t ret = CACHE_EXT_DONE_ITER, cb_ret, iter = 0;
-	uint64_t max_iter = 512;
+	uint64_t max_iter = 4096;
 	struct cache_ext_list_node *node;
 	bpf_callback_t bpf_iter_fn = (bpf_callback_t)iter_fn;
 
@@ -268,7 +268,7 @@ int cache_ext_list_iterate_extended(struct mem_cgroup *memcg,
 			   struct page_cache_ext_eviction_ctx *ctx)
 {
 	uint64_t ret = CACHE_EXT_DONE_ITER, cb_ret, iter = 0;
-	uint64_t max_iter = 512;
+	uint64_t max_iter = 4096;
 	struct cache_ext_list_node *node, *node2;
 	bpf_callback_t bpf_iter_fn = (bpf_callback_t)iter_fn;
 	struct cache_ext_list *continue_list, *evict_list;
