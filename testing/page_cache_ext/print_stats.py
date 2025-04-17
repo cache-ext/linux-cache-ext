@@ -105,14 +105,14 @@ def main():
             previous_cgroup_stats = current_cgroup_stats
 
             # BPF stats
-            cmd = "sudo bpftool map dump name stats"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            output = json.loads(result.stdout)
-            current_bpf_stats = parse_output(output)
+            # cmd = "sudo bpftool map dump name stats"
+            # result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            # output = json.loads(result.stdout)
+            # current_bpf_stats = parse_output(output)
 
-            print_bpf_stats(current_bpf_stats, previous_bpf_stats)
+            # print_bpf_stats(current_bpf_stats, previous_bpf_stats)
 
-            previous_bpf_stats = current_bpf_stats
+            # previous_bpf_stats = current_bpf_stats
             time.sleep(1)  # Wait for 60 seconds before the next iteration
         except Exception as e:
             print(f"An error occurred: {e}")

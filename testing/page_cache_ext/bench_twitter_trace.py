@@ -202,9 +202,9 @@ class LevelDBTwitterTraceBenchmark(BenchmarkFramework):
         configs = add_config_option(
             "benchmark", parse_strings_string(self.args.benchmark), configs
         )
-        configs = add_config_option("cgroup_size_pct", [5, 10], configs)
+        configs = add_config_option("cgroup_size_pct", [10], configs)
         configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            "cgroup_name", [DEFAULT_CACHE_EXT_CGROUP], configs
             # "cgroup_name",
             # [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP],
             # configs,
@@ -213,7 +213,7 @@ class LevelDBTwitterTraceBenchmark(BenchmarkFramework):
         for config in configs:
             if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
                 config["policy_loader"] = policy_loader_name
-        configs = add_config_option("iteration", list(range(1, 4)), configs)
+        configs = add_config_option("iteration", list(range(1, 2)), configs)
         return configs
 
     def benchmark_prepare(self, config):

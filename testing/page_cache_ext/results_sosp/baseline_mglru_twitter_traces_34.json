@@ -1,0 +1,35 @@
+[
+    {
+        "config": {
+            "name": "leveldb_twitter_trace_benchmark",
+            "cpus": 8,
+            "enable_mmap": false,
+            "runtime_seconds": 240,
+            "warmup_runtime_seconds": 45,
+            "benchmark": "twitter_cluster34_bench",
+            "cgroup_size_pct": 10,
+            "cgroup_name": "baseline_test",
+            "iteration": 1
+        },
+        "results": {
+            "update_throughput_avg": 0.0,
+            "insert_throughput_avg": 903.47,
+            "read_throughput_avg": 13193.05,
+            "scan_throughput_avg": 0.0,
+            "read_modify_write_throughput_avg": 0.0,
+            "throughput_avg": 14096.52,
+            "update_latency_avg": 0.0,
+            "update_latency_p99": 0.0,
+            "insert_latency_avg": 0.0,
+            "insert_latency_p99": 0.0,
+            "read_latency_avg": 0.0,
+            "latency_avg": 0.0,
+            "read_latency_p99": 0.0,
+            "latency_p99": 0.0,
+            "scan_latency_avg": 0.0,
+            "scan_latency_p99": 0.0,
+            "read_modify_write_latency_avg": 0.0,
+            "read_modify_write_latency_p99": 0.0
+        }
+    }
+]

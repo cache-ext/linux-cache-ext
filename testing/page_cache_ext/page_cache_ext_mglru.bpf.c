@@ -117,6 +117,9 @@ struct mglru_global_metadata {
 	unsigned long min_seq;
 	s64 evicted[MAX_NR_TIERS];
 	s64 refaulted[MAX_NR_TIERS];
+	s64 tier_selected[MAX_NR_TIERS];
+	s64 success_evicted;
+	s64 failed_evicted;
 	unsigned long avg_refaulted[MAX_NR_TIERS];
 	unsigned long avg_total[MAX_NR_TIERS];
 	unsigned long protected[MAX_NR_TIERS - 1];
@@ -209,6 +212,14 @@ inline void update_nr_pages_stat(struct mglru_global_metadata *lrugen, unsigned 
 	assert_valid_gen_0(gen_idx);
 	__sync_fetch_and_add(&lrugen->nr_pages[gen_idx], delta);
 }
+
+inline void update_tier_selected_stat(struct mglru_global_metadata *lrugen, int tier_idx,
+			  s64 delta)
+{
+	assert_valid_tier_0(tier_idx);
+	__sync_fetch_and_add(&lrugen->tier_selected[tier_idx], delta);
+}
+
 
 inline s64 read_refaulted_stat(struct mglru_global_metadata *lrugen, int tier_idx)
 {
@@ -412,7 +423,9 @@ static inline int order_base_2(int n)
 static inline int lru_tier_from_refs(int refs)
 {
 	/* see the comment in folio_lru_refs() */
-	return order_base_2(refs + 1);
+	// kernel does some off-by-one calculation here, we remove the +1
+	// return order_base_2(refs + 1);
+	return order_base_2(refs);
 }
 
 static inline bool gen_within_limits(unsigned int gen)
@@ -431,7 +444,7 @@ static inline bool gen_almost_empty(struct mglru_global_metadata *lrugen,
 	int oldest_gen = lru_gen_from_seq(min_seq);
 	int nr_folios = read_nr_pages_stat(lrugen, oldest_gen);
 	int threshold = 4;
-	return nr_folios < threshold;
+	return nr_folios <= threshold;
 }
 
 // TODO: This is supposed to run with a lock.
@@ -639,6 +652,7 @@ struct eviction_metadata {
 	__u64 curr_gen;
 	__u64 next_gen;
 	__u64 iter_reached;
+	__u64 tier_threshold;
 };
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -730,7 +744,11 @@ static int mglru_iter_fn(int idx, struct cache_ext_list_node *a)
 		return CACHE_EXT_EVICT_NODE;
 	}
 
-	int tier_threshold = get_tier_idx(lrugen);
+	int tier_threshold = eviction_meta->tier_threshold;
+	if (tier_threshold > MAX_NR_TIERS || tier_threshold < 0) {
+		bpf_printk("page_cache_ext: Invalid tier threshold %d\n", tier_threshold);
+	}
+	// int tier_threshold = 2;
 	int tier = lru_tier_from_refs(atomic_long_read(&meta->accesses));
 
 	/* protected */
@@ -786,10 +804,14 @@ void BPF_STRUCT_OPS(mglru_evict_folios, struct page_cache_ext_eviction_ctx *evic
 		bpf_printk("cache_ext: Failed to increment max_seq\n");
 	}
 
+	int tier_threshold = get_tier_idx(lrugen);
+	update_tier_selected_stat(lrugen, tier_threshold, 1);
+
 	// Save eviction metadata for stats
 	struct eviction_metadata ev_meta = {
 		.curr_gen = oldest_gen,
-		.next_gen = next_gen
+		.next_gen = next_gen,
+		.tier_threshold = tier_threshold,
 	};
 	set_eviction_metadata(&ev_meta);
 
@@ -813,7 +835,18 @@ void BPF_STRUCT_OPS(mglru_evict_folios, struct page_cache_ext_eviction_ctx *evic
 	}
 	struct eviction_metadata *eviction_meta = get_eviction_metadata();
 	if (eviction_meta == NULL) return;
-	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict && eviction_meta->iter_reached > 500) {
+	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
+		min_seq = READ_ONCE(lrugen->min_seq);
+		oldest_gen = lru_gen_from_seq(min_seq);
+		next_gen = (oldest_gen + 1) % MAX_NR_GENS;
+		__u64 next_gen_list = mglru_lists[next_gen];
+		__u64 oldest_gen_list = mglru_lists[oldest_gen];
+		struct cache_ext_iterate_opts opts = {
+			.continue_list = next_gen_list,
+			.continue_mode = CACHE_EXT_ITERATE_TAIL,
+			.evict_list = CACHE_EXT_ITERATE_SELF,
+			.evict_mode = CACHE_EXT_ITERATE_TAIL,
+		};
 		int ret = bpf_cache_ext_list_iterate_extended(
 			memcg, oldest_gen_list, mglru_iter_fn, &opts, eviction_ctx);
 		if (ret < 0) {
@@ -821,6 +854,10 @@ void BPF_STRUCT_OPS(mglru_evict_folios, struct page_cache_ext_eviction_ctx *evic
 			return;
 		}
 	}
+	s64 success_evicted = eviction_ctx->nr_folios_to_evict;
+	s64 failed_evicted = max(0, eviction_ctx->request_nr_folios_to_evict - eviction_ctx->nr_folios_to_evict);
+	__sync_fetch_and_add(&lrugen->failed_evicted, failed_evicted);
+	__sync_fetch_and_add(&lrugen->success_evicted, success_evicted);
 	if (eviction_ctx->nr_folios_to_evict < eviction_ctx->request_nr_folios_to_evict) {
 		bpf_printk("cache_ext: Failed to evict requested number of folios: %d/%d. Used list idx %d, list ptr: %p. Iter reached: %d\n",
 				eviction_ctx->nr_folios_to_evict,

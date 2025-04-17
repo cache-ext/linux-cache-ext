@@ -35,7 +35,7 @@ def approx_equal(val1, val2, threshold=0.1):
     return pct_diff <= threshold
 
 
-def ensure_random_file(path: str, size_in_bytes=10*GiB):
+def ensure_random_file(path: str, size_in_bytes=10 * GiB):
     """Create a file filled with random data at the specified path and size.
 
     Args:
@@ -46,10 +46,14 @@ def ensure_random_file(path: str, size_in_bytes=10*GiB):
     if os.path.exists(path):
         actual_size = os.path.getsize(path)
         if approx_equal(actual_size, size_in_bytes):
-            log.info(f"File {path} already exists with correct size {size_in_bytes} bytes")
+            log.info(
+                f"File {path} already exists with correct size {size_in_bytes} bytes"
+            )
             return
         else:
-            raise ValueError(f"File {path} exists but has wrong size {actual_size} bytes (expected {size_in_bytes})")
+            raise ValueError(
+                f"File {path} exists but has wrong size {actual_size} bytes (expected {size_in_bytes})"
+            )
     # Use dd to create a file of random data with 1MB batch size
     bs = 1024 * 1024  # 1MB
     count = size_in_bytes // bs
@@ -60,14 +64,13 @@ def ensure_random_file(path: str, size_in_bytes=10*GiB):
         f"of={path}",
         f"bs={bs}",
         f"count={count}",
-        "status=progress"
+        "status=progress",
     ]
 
     check_output(cmd)
 
 
 class FioBenchmark(BenchmarkFramework):
-
     def __init__(self, benchresults_cls=BenchResults, cli_args=None):
         super().__init__("fio_benchmark", benchresults_cls, cli_args)
         target_dir = self.args.target_dir
@@ -80,7 +83,6 @@ class FioBenchmark(BenchmarkFramework):
         target_file = os.path.join(target_dir, "fio_benchfile")
         ensure_random_file(target_file)
 
-
     def add_arguments(self, parser: argparse.ArgumentParser):
         parser.add_argument(
             "--target-dir", type=str, required=True, help="File to benchmark against."
@@ -92,15 +94,12 @@ class FioBenchmark(BenchmarkFramework):
             help="Specify the path to the policy loader binary",
         )
 
-
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
         configs = add_config_option("iteration", list(range(1, 2)), configs)
         configs = add_config_option("workload", ["randread"], configs)
         configs = add_config_option("runtime_seconds", [60], configs)
-        configs = add_config_option("nr_threads", [8], configs)
-        configs = add_config_option(
-            "cgroup_size", [5 * GiB], configs
-        )
+        configs = add_config_option("nr_threads", [4], configs)
+        configs = add_config_option("cgroup_size", [5 * GiB], configs)
         configs = add_config_option(
             "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
         )
@@ -159,7 +158,7 @@ class FioBenchmark(BenchmarkFramework):
 
     def after_benchmark(self, config):
         log.info("Stopping CPU usage measurement")
-        self.cpu_usage = sum(psutil.cpu_percent(percpu=True)[:config["cpus"]])
+        self.cpu_usage = sum(psutil.cpu_percent(percpu=True)[: config["cpus"]])
         if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:
             self.cache_ext_policy.stop()
         log.info("Deleting cgroup %s", config["cgroup_name"])

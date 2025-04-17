@@ -5,14 +5,14 @@ set -x
 set -o pipefail
 set -u
 
-RESULTS_FOLDER="sosp_results"
+RESULTS_FOLDER="results_sosp"
 
 # Microbenchmark with fio for CPU overhead
 # Assumes the data disk is /dev/sdb
-python3 bench_fio.py \
-    --cpu 8 \
-    --target-dir /mydata/fio_dir \
-    --results-file $RESULTS_FOLDER/cache_ext_fio_results.json
+# python3 bench_fio.py \
+#     --cpu 8 \
+#     --target-dir /mydata/fio_dir \
+#     --results-file $RESULTS_FOLDER/cache_ext_fio_results.json
 
 # # Benchmark LevelDB with mixed GET-SCAN
 # python3 bench_leveldb.py \
@@ -39,13 +39,22 @@ python3 bench_fio.py \
 #     --fadvise-hints "" \
 #     --benchmark ycsb_a,ycsb_c
 
-# python3 bench_leveldb.py \
-#     --cpu 8 \
-#     --policy-loader ./page_cache_ext_mglru.out \
-#     --results-file $RESULTS_FOLDER/cache_ext_lfu_ycsb_results.json \
-#     --leveldb-db /mydata/leveldb_db \
-#     --fadvise-hints "" \
-#     --benchmark ycsb_a
+python3 bench_leveldb.py \
+    --cpu 8 \
+    --policy-loader ./page_cache_ext_mglru.out \
+    --results-file $RESULTS_FOLDER/cache_ext_lfu_ycsb_results_tier_configurable2.json \
+    --leveldb-db /mydata/leveldb_db \
+    --fadvise-hints "" \
+    --benchmark ycsb_a,ycsb_b,ycsb_c,ycsb_d,ycsb_e,ycsb_f,uniform,uniform_read_write
+
+for cluster in 17 18 24 34 52; do
+    python3 bench_twitter_trace.py \
+        --cpu 8 \
+        --policy-loader ./page_cache_ext_mglru.out \
+        --results-file ./results_sosp/cache_ext_twitter_traces_${policy}_configurable_${cluster}.json \
+        --leveldb-db /mydata/leveldb_twitter_cluster${cluster}_db \
+        --benchmark twitter_cluster${cluster}_bench
+done
 
 # python3 bench_leveldb.py \
 #     --cpu 8 \
