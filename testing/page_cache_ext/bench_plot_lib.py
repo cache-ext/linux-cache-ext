@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import sys
-import json
 import logging
 
 from copy import deepcopy
-from itertools import groupby
 from matplotlib import pyplot as plt
 from bench_lib import (
     BenchRun,
-    BenchResults,
     DEFAULT_BASELINE_CGROUP,
     DEFAULT_CACHE_EXT_CGROUP,
 )
@@ -142,7 +138,7 @@ def plot_groupped_bars(
             for j, v in enumerate(xticks + offsets[i]):
                 if text_center_list and j in text_center_list:
                     plt.text(
-                        v + 0.075 * bar_width,
+                        v + 0.1 * bar_width,
                         ylimit / 2,
                         str(int(gpplot.y_values[i][j] / 1000)) + "K",
                         ha="center",
@@ -153,7 +149,7 @@ def plot_groupped_bars(
                     )
                 else:
                     plt.text(
-                        v + 0.075 * bar_width,
+                        v + 0.1 * bar_width,
                         gpplot.y_values[i][j] + measurement_offset,
                         str(int(gpplot.y_values[i][j] / 1000)) + "K",
                         ha="center",
