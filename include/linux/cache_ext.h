@@ -2,7 +2,7 @@
 #define _LINUX_CACHE_EXT_H 1
 
 /*
- * BPF-Exposed data structures for page_cache_ext.
+ * BPF-Exposed data structures for cache_ext.
  */
 
 #include <linux/list.h>
@@ -60,11 +60,11 @@ int bpf_cache_ext_list_del(struct folio *folio);
 int bpf_cache_ext_list_iterate(struct mem_cgroup *memcg, u64 list,
 			       int(iter_fn)(int idx,
 					    struct cache_ext_list_node *node),
-			       struct page_cache_ext_eviction_ctx *ctx);
+			       struct cache_ext_eviction_ctx *ctx);
 int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 			      s64(score_fn)(struct cache_ext_list_node *a),
 				  struct sampling_options *opts,
-				  struct page_cache_ext_eviction_ctx *ctx);
+				  struct cache_ext_eviction_ctx *ctx);
 u64 bpf_cache_ext_ds_registry_new_list(struct mem_cgroup *memcg);
 
 /*
@@ -74,7 +74,7 @@ struct cache_ext_list_node *cache_ext_list_node_alloc(struct folio *folio);
 void cache_ext_list_node_free(struct cache_ext_list_node *node);
 
 /*
- * page_cache_ext data structure registry.
+ * cache_ext data structure registry.
  */
 
 #define CACHE_EXT_REGISTRY_MAX_ENTRIES 5

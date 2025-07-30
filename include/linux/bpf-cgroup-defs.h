@@ -73,7 +73,7 @@ struct cgroup_bpf {
 
 	/* cache_ext */
 	bool cache_ext_enabled;
-	struct page_cache_ext_ops *cache_ext_ops;
+	struct cache_ext_ops *cache_ext_ops;
 	struct rw_semaphore cache_ext_sem;
 };
 

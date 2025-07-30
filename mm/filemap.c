@@ -219,9 +219,9 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 void __filemap_remove_folio(struct folio *folio, void *shadow)
 {
 	struct address_space *mapping = folio->mapping;
-	/* page_cache_ext: folio_evicted hook */
+	/* cache_ext: folio_evicted hook */
 	struct mem_cgroup *memcg = folio_memcg(folio);
-	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	struct cache_ext_ops *pcext_ops = get_cache_ext_ops(memcg);
 	if (pcext_ops != NULL && pcext_ops->folio_evicted != NULL)
 		pcext_ops->folio_evicted(folio);
 
@@ -336,9 +336,9 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	xa_lock_irq(&mapping->i_pages);
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
-		/* page_cache_ext: folio_evicted hook */
+		/* cache_ext: folio_evicted hook */
 		struct mem_cgroup *memcg = folio_memcg(folio);
-		struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+		struct cache_ext_ops *pcext_ops = get_cache_ext_ops(memcg);
 		if (pcext_ops != NULL && pcext_ops->folio_evicted != NULL)
 			pcext_ops->folio_evicted(folio);
 
@@ -932,11 +932,11 @@ unlock:
 		goto error;
 
 	struct mem_cgroup *memcg = folio_memcg(folio);
-	/* page_cache_ext: Maintain the valid folios hashtable */
+	/* cache_ext: Maintain the valid folios hashtable */
 	if (memcg->cache_ext_valid)
 		valid_folios_add(folio);
-	/* page_cache_ext: folio_added hook */
-	struct page_cache_ext_ops *pcext_ops = get_page_cache_ext_ops(memcg);
+	/* cache_ext: folio_added hook */
+	struct cache_ext_ops *pcext_ops = get_cache_ext_ops(memcg);
 	if (pcext_ops != NULL && pcext_ops->folio_added != NULL)
 		pcext_ops->folio_added(folio);
 
@@ -2646,13 +2646,13 @@ retry:
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 	if (!folio_batch_count(fbatch)) {
 		struct mem_cgroup *memcg;
-		struct page_cache_ext_ops *cache_ext_ops;
+		struct cache_ext_ops *cache_ext_ops;
 
 		/* Run cache_ext admission hook */
 		rcu_read_lock();
 
 		memcg = mem_cgroup_from_task(current);
-		cache_ext_ops = get_page_cache_ext_ops(memcg);
+		cache_ext_ops = get_cache_ext_ops(memcg);
 		if (cache_ext_ops && cache_ext_ops->admit_folio) {
 			struct cache_ext_admission_ctx ctx = {
 				.ino = filp->f_inode->i_ino,

@@ -101,7 +101,7 @@ void valid_folios_del(struct folio *folio);
 bool valid_folios_exists(struct valid_folios_set *valid_folios_set, struct folio *folio);
 bool valid_folios_exists_unlocked(struct valid_folios_set *valid_folios_set, struct folio *folio);
 struct valid_folios_set * lruvec_to_valid_folios_set(struct lruvec *lruvec);
-struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg);
+struct cache_ext_ops *get_cache_ext_ops(struct mem_cgroup *memcg);
 struct valid_folio *valid_folios_lookup(struct folio *folio);
 struct valid_folios_set *folio_to_valid_folios_set(struct folio *folio);
 spinlock_t *valid_folios_set_get_bucket_lock(struct valid_folios_set *valid_folios_set, struct folio *folio);

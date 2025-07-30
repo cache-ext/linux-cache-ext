@@ -9,7 +9,7 @@ BPF_STRUCT_OPS_TYPE(bpf_dummy_ops)
 #include <net/tcp.h>
 BPF_STRUCT_OPS_TYPE(tcp_congestion_ops)
 #endif
-// Page cache ext
+// cache_ext
 #include <linux/mm_types.h>
-BPF_STRUCT_OPS_TYPE(page_cache_ext_ops)
+BPF_STRUCT_OPS_TYPE(cache_ext_ops)
 #endif

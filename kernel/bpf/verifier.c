@@ -9243,7 +9243,7 @@ static int set_cache_ext_list_iterate_callback_state(
 	       struct mem_cgroup *memcg,
 		   u64 list,
 		   int (iter_fn)(int idx, struct cache_ext_list_node *node),
-		   struct page_cache_ext_eviction_ctx *ctx)
+		   struct cache_ext_eviction_ctx *ctx)
 	 */
 	__mark_reg_not_init(env, &callee->regs[BPF_REG_0]);
 
@@ -9276,7 +9276,7 @@ static int set_cache_ext_list_sample_callback_state(
 	 * int bpf_cache_ext_list_sample(struct mem_cgroup *memcg, u64 list,
 						s64(score_fn)(struct cache_ext_list_node *a),
 						struct sampling_options *opts,
-						struct page_cache_ext_eviction_ctx *ctx)
+						struct cache_ext_eviction_ctx *ctx)
 	 */
 	__mark_reg_not_init(env, &callee->regs[BPF_REG_0]);
 

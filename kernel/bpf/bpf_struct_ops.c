@@ -1090,7 +1090,7 @@ int bpf_cache_ext_ops_link_create(union bpf_attr *attr)
 
 	// Enable cache ext
 	down_write(&cgrp->bpf.cache_ext_sem);
-	cgrp->bpf.cache_ext_ops = (struct page_cache_ext_ops *)st_map->kvalue.data;
+	cgrp->bpf.cache_ext_ops = (struct cache_ext_ops *)st_map->kvalue.data;
 	cgrp->bpf.cache_ext_enabled = true;
 	up_write(&cgrp->bpf.cache_ext_sem);
 

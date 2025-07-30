@@ -73,7 +73,7 @@
 #include <net/ip.h>
 #include "slab.h"
 #include "swap.h"
-#include "page_cache_ext.h"
+#include "cache_ext.h"
 
 #include <linux/uaccess.h>
 
@@ -268,7 +268,7 @@ bool cache_ext_cgroup_enabled(struct cgroup *cgroup) {
 	return res;
 }
 
-noinline struct page_cache_ext_ops *get_page_cache_ext_ops(struct mem_cgroup *memcg)
+noinline struct cache_ext_ops *get_cache_ext_ops(struct mem_cgroup *memcg)
 {
 	if (memcg && memcg->cache_ext_valid && cache_ext_cgroup_enabled(memcg->css.cgroup))
 		return memcg->css.cgroup->bpf.cache_ext_ops;
