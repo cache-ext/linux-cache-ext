@@ -274,14 +274,15 @@ static __u64 mglru_lists[MAX_NR_GENS];
  *    generations can resist stale information.
  */
 
- struct ctrl_pos {
+ // Avoid name conflict with kernel struct ctrl_pos if MGLRU is enabled
+ struct ctrl_pos___x {
 	unsigned long refaulted;
 	unsigned long total;
 	int gain;
 };
 
 static inline void read_ctrl_pos(struct mglru_global_metadata *lrugen, int tier,
-			  int gain, struct ctrl_pos *pos)
+			  int gain, struct ctrl_pos___x *pos)
 {
 	pos->refaulted = lrugen->avg_refaulted[tier] +
 			 __sync_fetch_and_add(&lrugen->refaulted[tier], 0);
@@ -327,7 +328,7 @@ static inline void reset_ctrl_pos(struct mglru_global_metadata *lrugen, bool car
 	}
 }
 
-static inline bool positive_ctrl_err(struct ctrl_pos *sp, struct ctrl_pos *pv)
+static inline bool positive_ctrl_err(struct ctrl_pos___x *sp, struct ctrl_pos___x *pv)
 {
 	/*
 	 * Return true if the PV has a limited number of refaults or a lower
@@ -345,7 +346,7 @@ static inline bool positive_ctrl_err(struct ctrl_pos *sp, struct ctrl_pos *pv)
 static inline int get_tier_idx(struct mglru_global_metadata *lrugen)
 {
 	int tier;
-	struct ctrl_pos sp, pv;
+	struct ctrl_pos___x sp, pv;
 
 	/*
 	 * To leave a margin for fluctuations, use a larger gain factor (1:2).
