@@ -6557,6 +6557,10 @@ struct bpf_link_info {
 			__u32 ifindex;
 			__u32 attach_type;
 		} tcx;
+		struct {
+			__u64 cgroup_id;
+			__u32 map_id;
+		} cache_ext_ops;
 	};
 } __attribute__((aligned(8)));
 
