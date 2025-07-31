@@ -1,23 +1,26 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <bpf/bpf.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <argp.h>
+#include <bpf/bpf.h>
+#include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "dir_watcher.h"
 #include "cache_ext_lhd.bpf.h"
 #include "cache_ext_lhd.skel.h"
 
-char *USAGE = "Usage: ./cache_ext_lhd\n";
+char *USAGE = "Usage: ./cache_ext_lhd --watch_dir <dir> --cgroup_path <path>\n";
 struct cmdline_args {
 	char *watch_dir;
+	char *cgroup_path;
 };
 
 static struct argp_option options[] = {
 	{ "watch_dir", 'w', "DIR", 0, "Directory to watch" },
+	{ "cgroup_path", 'c', "PATH", 0, "Path to cgroup (e.g., /sys/fs/cgroup/cache_ext_test)" },
 	{ 0 },
 };
 
@@ -36,6 +39,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 	case 'w':
 		args->watch_dir = arg;
 		break;
+	case 'c':
+		args->cgroup_path = arg;
+		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
 	}
@@ -48,6 +54,11 @@ static int parse_args(int argc, char **argv, struct cmdline_args *args) {
 
 	if (args->watch_dir == NULL) {
 		fprintf(stderr, "Missing required argument: watch_dir\n");
+		return 1;
+	}
+
+	if (args->cgroup_path == NULL) {
+		fprintf(stderr, "Missing required argument: cgroup_path\n");
 		return 1;
 	}
 
@@ -107,7 +118,8 @@ int main(int argc, char **argv) {
 	struct sigaction sa;
 	char watch_dir_path[PATH_MAX];
 	int reconfigure_prog_fd;
-	int ret = 0;
+	int cgroup_fd = -1;
+	int ret = 1;
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
@@ -121,17 +133,23 @@ int main(int argc, char **argv) {
 	// Install signal handler
 	if (sigaction(SIGINT, &sa, NULL)) {
 		perror("Failed to set up signal handling");
-		ret = 1;
-		goto cleanup;
+		return 1;
 	}
 
 	if (validate_watch_dir(args.watch_dir, watch_dir_path))
 		return 1;
 
+	cgroup_fd = open(args.cgroup_path, O_RDONLY);
+	if (cgroup_fd < 0) {
+		fprintf(stderr, "Failed to open cgroup path %s: %s\n",
+			args.cgroup_path, strerror(errno));
+		return 1;
+	}
+
 	skel = cache_ext_lhd_bpf__open();
 	if (!skel) {
 		perror("Failed to open BPF skeleton");
-		return 1;
+		goto cleanup;
 	}
 
 	watch_dir_path_len_map(skel) = strlen(watch_dir_path);
@@ -139,13 +157,11 @@ int main(int argc, char **argv) {
 
 	if (cache_ext_lhd_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
-		ret = 1;
 		goto cleanup;
 	}
 
 	if (initialize_watch_dir_map(watch_dir_path, bpf_map__fd(inode_watchlist_map(skel)), false)) {
 		perror("Failed to initialize watch_dir map");
-		ret = 1;
 		goto cleanup;
 	}
 
@@ -155,21 +171,18 @@ int main(int argc, char **argv) {
 	events = ring_buffer__new(bpf_map__fd(skel->maps.events), handle_event, &reconfigure_prog_fd, NULL);
 	if (!events) {
 		perror("Failed to create ring buffer");
-		ret = 1;
 		goto cleanup;
 	}
 
-	link = bpf_map__attach_struct_ops(skel->maps.lhd_ops);
+	link = bpf_map__attach_cache_ext_ops(skel->maps.lhd_ops, cgroup_fd);
 	if (link == NULL) {
-		perror("Failed to attach struct_ops map");
-		ret = 1;
+		perror("Failed to attach cache_ext_ops to cgroup");
 		goto cleanup;
 	}
 
 	// This is necessary for the dir_watcher functionality
 	if (cache_ext_lhd_bpf__attach(skel)) {
 		perror("Failed to attach BPF skeleton");
-		ret = 1;
 		goto cleanup;
 	}
 
@@ -181,6 +194,7 @@ int main(int argc, char **argv) {
 			break;
 		} else if (ret < 0) {
 			fprintf(stderr, "error polling ring buffer: %d\n", ret);
+			ret = 1;
 			goto cleanup;
 		} else {
 			ret = 0;
@@ -190,8 +204,9 @@ int main(int argc, char **argv) {
 	printf("Number of reconfigurations: %ld\n", num_reconfigurations);
 
 cleanup:
+	close(cgroup_fd);
 	ring_buffer__free(events);
 	bpf_link__destroy(link);
 	cache_ext_lhd_bpf__destroy(skel);
-	return 0;
+	return ret;
 }

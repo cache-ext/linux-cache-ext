@@ -2,9 +2,10 @@
 #include <bpf/bpf.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <signal.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -12,15 +13,17 @@
 #include "dir_watcher.h"
 #include "cache_ext_s3fifo.skel.h"
 
-char *USAGE = "Usage: ./cache_ext_s3fifo [OPTION]...\n";
+char *USAGE = "Usage: ./cache_ext_s3fifo --watch_dir <dir> --cgroup_size <size> --cgroup_path <path>\n";
 struct cmdline_args {
 	char *watch_dir;
         uint64_t cgroup_size;
+        char *cgroup_path;
 };
 
 static struct argp_option options[] = {
 	{ "watch_dir", 'w', "DIR", 0, "Directory to watch" },
-        {"cgroup_size", 'c', "SIZE", 0, "Size of the cgroup"},
+        {"cgroup_size", 's', "SIZE", 0, "Size of the cgroup"},
+        {"cgroup_path", 'c', "PATH", 0, "Path to cgroup (e.g., /sys/fs/cgroup/cache_ext_test)"},
 	{ 0 },
 };
 
@@ -39,13 +42,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 	case 'w':
 		args->watch_dir = arg;
 		break;
-        case 'c':
+        case 's':
                 // TODO: move this to parse_args()
                 errno = 0;
                 args->cgroup_size = strtoull(arg, NULL, 10);
                 if (errno)
                         args->cgroup_size = 0;
 
+                break;
+        case 'c':
+                args->cgroup_path = arg;
                 break;
 	default:
 		return ARGP_ERR_UNKNOWN;
@@ -65,6 +71,11 @@ static int parse_args(int argc, char **argv, struct cmdline_args *args) {
 	if (args->cgroup_size == 0) {
 	        fprintf(stderr, "Invalid cgroup size\n");
 	        return 1;
+	}
+
+	if (args->cgroup_path == NULL) {
+		fprintf(stderr, "Missing required argument: cgroup_path\n");
+		return 1;
 	}
 
 	return 0;
@@ -103,7 +114,8 @@ int main(int argc, char **argv) {
 	struct bpf_link *link = NULL;
 	struct sigaction sa;
 	char watch_dir_path[PATH_MAX];
-	int ret = 0;
+	int cgroup_fd = -1;
+	int ret = 1;
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
@@ -123,10 +135,17 @@ int main(int argc, char **argv) {
 	if (validate_watch_dir(args.watch_dir, watch_dir_path))
 		return 1;
 
+	// Open cgroup directory early
+	cgroup_fd = open(args.cgroup_path, O_RDONLY);
+	if (cgroup_fd < 0) {
+		perror("Failed to open cgroup path");
+		return 1;
+	}
+
 	skel = cache_ext_s3fifo_bpf__open();
 	if (!skel) {
 		perror("Failed to open BPF skeleton");
-		return 1;
+		goto cleanup;
 	}
 
 	// Set cache size in terms of number of pages. Assumes uniform page size.
@@ -157,9 +176,9 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	link = bpf_map__attach_struct_ops(skel->maps.s3fifo_ops);
+	link = bpf_map__attach_cache_ext_ops(skel->maps.s3fifo_ops, cgroup_fd);
 	if (link == NULL) {
-		perror("Failed to attach struct_ops map");
+		perror("Failed to attach cache_ext_ops to cgroup");
 		ret = 1;
 		goto cleanup;
 	}
@@ -174,8 +193,10 @@ int main(int argc, char **argv) {
 	// Wait for keyboard input
 	printf("Press any key to exit...\n");
 	getchar();
+	ret = 0;
 
 cleanup:
+	close(cgroup_fd);
 	bpf_link__destroy(link);
 	cache_ext_s3fifo_bpf__destroy(skel);
 	return ret;

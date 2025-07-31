@@ -35,7 +35,14 @@ class CacheExtPolicy:
         if self.has_started:
             raise Exception("Policy already started")
         self.has_started = True
-        cmd = ["sudo", self.loader_path, "--watch_dir", self.watch_dir]
+        cmd = [
+            "sudo",
+            self.loader_path,
+            "--watch_dir",
+            self.watch_dir,
+            "--cgroup_path",
+            self.cgroup_path,
+        ]
 
         if cgroup_size:
             cmd += ["--cgroup_size", str(cgroup_size)]
@@ -193,9 +200,10 @@ def write_file(path: str, data: str):
 
 
 def enable_cache_ext_for_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP):
-    # echo -n "/cache_ext_test" > /proc/cache_ext_enabled_cgroup
-    run(["echo", "-n", "/%s" % cgroup, ">",
-         "/proc/cache_ext_enabled_cgroup"])
+    # Note: With the new per-cgroup interface, cache_ext policies are now
+    # attached directly to specific cgroups via the BPF programs,
+    # so we no longer need to enable it globally via /proc/cache_ext_enabled_cgroup
+    pass
 
 
 def delete_cgroup(cgroup):
@@ -214,9 +222,11 @@ def recreate_cache_ext_cgroup(cgroup=DEFAULT_CACHE_EXT_CGROUP,
          "echo %d > /sys/fs/cgroup/%s/memory.max"
          % (limit_in_bytes, cgroup)])
 
-    # Enable page cache extension for cache_ext cgroup
-    run(["sudo", "sh", "-c",
-         "echo -n '/%s' > /proc/cache_ext_enabled_cgroup" % cgroup])
+    log.info(
+        "cache_ext cgroup %s created with limit %s",
+        cgroup,
+        format_bytes_str(limit_in_bytes),
+    )
 
 
 def recreate_baseline_cgroup(cgroup=DEFAULT_BASELINE_CGROUP,

@@ -17,11 +17,11 @@ static u64 ewma_num_objects = 0;
 static u64 ewma_num_objects_mass = 0;
 
 static u64 ewma_victim_hit_density = 0;
+
+/*
 static u64 recently_admitted_head = 0;
 static u64 recently_admitted[RECENTLY_ADMITTED_SIZE];
-
-// Current number of requests
-static u64 timestamp = 0;
+*/
 
 // For debugging purposes
 static u64 overflows = 0;

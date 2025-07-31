@@ -12,13 +12,15 @@
 #include "dir_watcher.h"
 #include "cache_ext_fifo.skel.h"
 
-char *USAGE = "Usage: ./cache_ext_fifo [OPTION]...\n";
+char *USAGE = "Usage: ./cache_ext_fifo --watch_dir <dir> --cgroup_path <path>\n";
 struct cmdline_args {
 	char *watch_dir;
+	char *cgroup_path;
 };
 
 static struct argp_option options[] = {
 	{ "watch_dir", 'w', "DIR", 0, "Directory to watch" },
+	{ "cgroup_path", 'c', "PATH", 0, "Path to cgroup (e.g., /sys/fs/cgroup/cache_ext_test)" },
 	{ 0 },
 };
 
@@ -35,6 +37,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 	case 'w':
 		args->watch_dir = arg;
 		break;
+	case 'c':
+		args->cgroup_path = arg;
+		break;
 	default:
 		return ARGP_ERR_UNKNOWN;
 	}
@@ -47,6 +52,11 @@ static int parse_args(int argc, char **argv, struct cmdline_args *args) {
 
 	if (args->watch_dir == NULL) {
 		fprintf(stderr, "Missing required argument: watch_dir\n");
+		return 1;
+	}
+
+	if (args->cgroup_path == NULL) {
+		fprintf(stderr, "Missing required argument: cgroup_path\n");
 		return 1;
 	}
 
@@ -86,7 +96,8 @@ int main(int argc, char **argv) {
 	struct bpf_link *link = NULL;
 	struct sigaction sa;
 	char watch_dir_path[PATH_MAX];
-	int ret = 0;
+	int cgroup_fd = -1;
+	int ret = 1;
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
@@ -106,10 +117,16 @@ int main(int argc, char **argv) {
 	if (validate_watch_dir(args.watch_dir, watch_dir_path))
 		return 1;
 
+	cgroup_fd = open(args.cgroup_path, O_RDONLY);
+	if (cgroup_fd < 0) {
+		perror("Failed to open cgroup path");
+		return 1;
+	}
+
 	skel = cache_ext_fifo_bpf__open();
 	if (!skel) {
 		perror("Failed to open BPF skeleton");
-		return 1;
+		goto cleanup;
 	}
 
 	watch_dir_path_len_map(skel) = strlen(watch_dir_path);
@@ -117,35 +134,33 @@ int main(int argc, char **argv) {
 
 	if (cache_ext_fifo_bpf__load(skel)) {
 		perror("Failed to load BPF skeleton");
-		ret = 1;
 		goto cleanup;
 	}
 
 	if (initialize_watch_dir_map(watch_dir_path, bpf_map__fd(inode_watchlist_map(skel)), true)) {
 		perror("Failed to initialize watch_dir map");
-		ret = 1;
 		goto cleanup;
 	}
 
-	link = bpf_map__attach_struct_ops(skel->maps.fifo_ops);
+	link = bpf_map__attach_cache_ext_ops(skel->maps.fifo_ops, cgroup_fd);
 	if (link == NULL) {
-		perror("Failed to attach struct_ops map");
-		ret = 1;
+		perror("Failed to attach cache_ext_ops to cgroup");
 		goto cleanup;
 	}
 
 	// This is necessary for the dir_watcher functionality
 	if (cache_ext_fifo_bpf__attach(skel)) {
 		perror("Failed to attach BPF skeleton");
-		ret = 1;
 		goto cleanup;
 	}
 
 	// Wait for keyboard input
 	printf("Press any key to exit...\n");
 	getchar();
+	ret = 0;
 
 cleanup:
+	close(cgroup_fd);
 	bpf_link__destroy(link);
 	cache_ext_fifo_bpf__destroy(skel);
 	return ret;
