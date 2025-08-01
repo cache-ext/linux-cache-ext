@@ -439,6 +439,10 @@ class BenchmarkFramework(ABC):
                             " missing results")
         parser.add_argument("--debug-segfault", action="store_true",
                             default=False, help="Debug segfaults")
+        parser.add_argument("--default-only", action="store_true",
+                            default=False, help="Run only the default config. Helpful for running MGLRU.")
+        parser.add_argument("--iterations", type=int, default=1,
+                            help="Number of iterations to run for each config")
         self.add_arguments(parser)
         return parser.parse_args()
 

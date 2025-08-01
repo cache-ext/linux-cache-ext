@@ -95,14 +95,19 @@ class FioBenchmark(BenchmarkFramework):
         )
 
     def generate_configs(self, configs: List[Dict]) -> List[Dict]:
-        configs = add_config_option("iteration", list(range(1, 2)), configs)
+        configs = add_config_option("iteration", list(range(1, self.args.iterations + 1)), configs)
         configs = add_config_option("workload", ["randread"], configs)
         configs = add_config_option("runtime_seconds", [60], configs)
         configs = add_config_option("nr_threads", [4], configs)
         configs = add_config_option("cgroup_size", [5 * GiB], configs)
-        configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
-        )
+        if self.args.default_only:
+            configs = add_config_option(
+                "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            )
+        else:
+            configs = add_config_option(
+                "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            )
 
         for config in configs:
             if config["cgroup_name"] == DEFAULT_CACHE_EXT_CGROUP:

@@ -47,11 +47,18 @@ class FileSearchBenchmark(BenchmarkFramework):
         configs = add_config_option(
             "cgroup_size", [1 * GiB], configs
         )
-        configs = add_config_option(
-            "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
-        )
+        if self.args.default_only:
+            configs = add_config_option(
+                "cgroup_name", [DEFAULT_BASELINE_CGROUP], configs
+            )
+
+        else:
+            configs = add_config_option(
+                "cgroup_name", [DEFAULT_BASELINE_CGROUP, DEFAULT_CACHE_EXT_CGROUP], configs
+            )
+
         configs = add_config_option("benchmark", ["filesearch"], configs)
-        configs = add_config_option("iteration", list(range(1, 2)), configs)
+        configs = add_config_option("iteration", list(range(1, self.args.iterations + 1)), configs)
         return configs
 
     def before_benchmark(self, config):
