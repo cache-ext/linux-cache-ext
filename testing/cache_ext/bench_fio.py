@@ -1,12 +1,12 @@
-import sys
-import json
-import psutil
-from typing import Dict, List
-import logging
 import argparse
+import json
+import logging
+from typing import Dict, List
+
+import psutil
+from yanniszark_common.cmdutils import check_output
 
 from bench_lib import *
-from yanniszark_common.cmdutils import check_output
 
 log = logging.getLogger(__name__)
 

@@ -1,10 +1,9 @@
-import os
 import logging
-
-from bench_lib import *
+import os
+from time import time
 from typing import List, Dict
 
-from bench_lib import BenchResults
+from bench_lib import *
 
 log = logging.getLogger(__name__)
 

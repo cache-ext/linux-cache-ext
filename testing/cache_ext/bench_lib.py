@@ -1,20 +1,18 @@
-import os
-import sys
-import json
-import select
-import logging
-import resource
 import argparse
+import json
+import logging
+import os
+import resource
+import select
 import subprocess
-
-from time import sleep, time
-from ruamel.yaml import YAML
-from contextlib import suppress
+import sys
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from subprocess import CalledProcessError
+from time import sleep
 from typing import Dict, List, Union
 
+from ruamel.yaml import YAML
 
 GiB = 2**30
 log = logging.getLogger(__name__)

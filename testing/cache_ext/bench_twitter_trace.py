@@ -1,14 +1,13 @@
+import argparse
+import logging
 import os
 import re
-import sys
-import json
-import uuid
-import select
-import logging
-import argparse
 import subprocess
-
 from time import sleep
+from typing import Dict, List
+
+from ruamel.yaml import YAML
+
 from bench_lib import (
     CacheExtPolicy,
     BenchmarkFramework,
@@ -28,13 +27,8 @@ from bench_lib import (
     format_bytes_str,
     set_sysctl,
 )
-from typing import Dict, List
-from ruamel.yaml import YAML
-from contextlib import suppress, contextmanager
 
 yaml = YAML()
-
-
 log = logging.getLogger(__name__)
 GiB = 2**30
 MiB = 2**20

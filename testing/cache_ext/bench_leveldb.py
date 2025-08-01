@@ -1,7 +1,7 @@
+import argparse
+import logging
 import os
 import re
-import logging
-import argparse
 from time import sleep
 from typing import Dict, List
 
