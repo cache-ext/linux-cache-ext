@@ -70,7 +70,6 @@
 
 #include "internal.h"
 #include "swap.h"
-#include "cache_ext.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>

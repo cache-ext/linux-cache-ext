@@ -73,7 +73,6 @@
 #include <net/ip.h>
 #include "slab.h"
 #include "swap.h"
-#include "cache_ext.h"
 
 #include <linux/uaccess.h>
 
