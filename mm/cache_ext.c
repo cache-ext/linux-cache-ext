@@ -1,15 +1,13 @@
-#include <linux/types.h>
-#include <linux/mm_types.h>
-#include <linux/kernel.h>
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
 #include <linux/btf.h>
+#include <linux/kernel.h>
 #include <linux/memcontrol.h>
+#include <linux/mm_types.h>
+#include <linux/types.h>
 
-// extern struct bpf_struct_ops bpf_cache_ext_ops;
 static const struct btf_type *cache_ext_eviction_ctx_type;
 static const struct btf_type *cache_ext_admission_ctx_type;
-struct cache_ext_ops *cache_ext_ops = NULL;
 
 static int bpf_cache_ext_init(struct btf *btf)
 {
@@ -130,7 +128,6 @@ static void bpf_cache_ext_unreg(void *kdata, void *more_data)
 	struct mem_cgroup *memcg;
 
 	pr_info("cache_ext: Unregistering struct ops\n");
-	WRITE_ONCE(cache_ext_ops, NULL);
 
 	// Delete the registry and all data structures from the memory cgroup.
 	if (!cgrp) {
